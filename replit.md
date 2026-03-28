@@ -16,7 +16,7 @@ Smart travel platform connecting travelers (customers) with merchants (fuel stat
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (ESM bundle)
 - **Auth**: JWT (jsonwebtoken + bcryptjs)
-- **Frontend**: React + Vite (artifacts/darbby)
+- **Frontends**: React + Vite × 2 — `artifacts/client-app` (travelers) + `artifacts/merchant-portal` (merchants)
 
 ## Database Architecture (v3)
 
@@ -59,7 +59,19 @@ darbby-monorepo/
 │   │           ├── auditLog.ts       # system_operations_log writer
 │   │           ├── autoNegotiator.ts # Auto-negotiator engine v3
 │   │           └── geoUtils.ts       # Google Maps API + fallback
-│   └── darbby/             # React + Vite frontend
+│   ├── client-app/         # React + Vite — Traveler app (/client/, port 21647)
+│   │   └── src/
+│   │       ├── pages/      # 9 traveler pages (UserDashboard, CreateTrip, etc.)
+│   │       ├── components/ # AppLayout (user nav) + Radix UI components
+│   │       ├── hooks/      # use-auth.ts — USER-only JWT auth (zustand)
+│   │       └── lib/        # utils.ts, cn, formatCurrency
+│   ├── merchant-portal/    # React + Vite — Merchant app (/merchant-portal/, port 21804)
+│   │   └── src/
+│   │       ├── pages/      # 12 merchant pages (MerchantDashboard, DINE, etc.)
+│   │       ├── components/ # AppLayout (merchant nav) + Radix UI components
+│   │       ├── hooks/      # use-auth.ts — MERCHANT-only JWT auth (zustand)
+│   │       └── lib/        # utils.ts, cn, formatCurrency
+│   └── darbby/             # Legacy combined React + Vite app (kept intact at /)
 ├── lib/
 │   ├── api-spec/           # OpenAPI spec + Orval codegen
 │   ├── api-client-react/   # Generated React Query hooks

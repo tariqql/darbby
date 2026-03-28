@@ -11,6 +11,13 @@ router.use(requireActor("USER"));
 
 function auth(req: any): JwtPayload { return req.auth; }
 
+/** Safely extract rows from db.execute() — handles both QueryResult and plain arrays */
+function dbRows<T>(result: any): T[] {
+  if (Array.isArray(result)) return result as T[];
+  if (result && Array.isArray(result.rows)) return result.rows as T[];
+  return [];
+}
+
 // GET /api/trips
 router.get("/", async (req, res) => {
   const { id } = auth(req);
@@ -47,11 +54,10 @@ router.post("/", async (req, res) => {
     }
   }
 
-  const originGeog = `SRID=4326;POINT(${originLng} ${originLat})`;
-  const destGeog = `SRID=4326;POINT(${destLng} ${destLat})`;
-  const routeGeog = polyline ? null : null;
+  const originGeog = `SRID=4326;POINT(${originLng ?? 0} ${originLat ?? 0})`;
+  const destGeog = `SRID=4326;POINT(${destLng ?? 0} ${destLat ?? 0})`;
 
-  const [trip] = await db.execute<any>(sql`
+  const raw = await db.execute<any>(sql`
     INSERT INTO trips (
       id, user_id, vehicle_profile_id, title, trip_purpose,
       origin_name, origin, destination_name, destination,
@@ -65,6 +71,7 @@ router.post("/", async (req, res) => {
       ${isPublic !== false}, 'ACTIVE'
     ) RETURNING *
   `);
+  const trip = dbRows<any>(raw)[0];
 
   await writeAuditLog({ tableName: "trips", recordId: trip.id, operation: "INSERT", actorType: "USER", actorId: id, newValues: { originName, destinationName, tripPurpose }, ipAddress: req.ip });
   res.status(201).json(trip);
@@ -75,7 +82,8 @@ router.get("/:id", async (req, res) => {
   const { id: userId } = auth(req);
   const { id } = req.params;
 
-  const [trip] = await db.execute<any>(sql`SELECT * FROM trips WHERE id = ${id}::uuid AND user_id = ${userId}::uuid LIMIT 1`);
+  const raw = await db.execute<any>(sql`SELECT * FROM trips WHERE id = ${id}::uuid AND user_id = ${userId}::uuid LIMIT 1`);
+  const trip = dbRows<any>(raw)[0];
   if (!trip) { res.status(404).json({ error: "Trip not found" }); return; }
 
   const tripOffers = await db.select().from(offers).where(eq(offers.tripId, id));
@@ -90,13 +98,15 @@ router.patch("/:id", async (req, res) => {
 
   if (!status) { res.status(400).json({ error: "status is required" }); return; }
 
-  const [existing] = await db.execute<any>(sql`SELECT * FROM trips WHERE id = ${id}::uuid AND user_id = ${userId}::uuid LIMIT 1`);
+  const existingRaw = await db.execute<any>(sql`SELECT * FROM trips WHERE id = ${id}::uuid AND user_id = ${userId}::uuid LIMIT 1`);
+  const existing = dbRows<any>(existingRaw)[0];
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
-  const [updated] = await db.execute<any>(sql`
+  const updatedRaw = await db.execute<any>(sql`
     UPDATE trips SET status = ${status}::trip_status, updated_at = NOW()
     WHERE id = ${id}::uuid RETURNING *
   `);
+  const updated = dbRows<any>(updatedRaw)[0];
 
   await writeAuditLog({
     tableName: "trips", recordId: id, operation: "STATUS_CHANGE", actorType: "USER", actorId: userId,
@@ -110,7 +120,8 @@ router.get("/:id/nearby-merchants", async (req, res) => {
   const { id: userId } = auth(req);
   const { id } = req.params;
 
-  const [trip] = await db.execute<any>(sql`SELECT * FROM trips WHERE id = ${id}::uuid AND user_id = ${userId}::uuid LIMIT 1`);
+  const tripRaw = await db.execute<any>(sql`SELECT * FROM trips WHERE id = ${id}::uuid AND user_id = ${userId}::uuid LIMIT 1`);
+  const trip = dbRows<any>(tripRaw)[0];
   if (!trip) { res.status(404).json({ error: "Trip not found" }); return; }
   if (!trip.route_geom) {
     res.json([]);
@@ -139,7 +150,7 @@ router.get("/:id/nearby-merchants", async (req, res) => {
     LIMIT 50
   `);
 
-  res.json(nearby);
+  res.json(dbRows(nearby));
 });
 
 export default router;

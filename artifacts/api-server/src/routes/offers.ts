@@ -9,15 +9,33 @@ router.use(authenticate);
 
 function auth(req: any): JwtPayload { return req.auth; }
 
+function dbRows<T = any>(result: any): T[] {
+  if (Array.isArray(result)) return result as T[];
+  if (result && Array.isArray(result.rows)) return result.rows as T[];
+  return [] as T[];
+}
+
 async function getOfferWithDetails(offerId: string) {
   const [offer] = await db.select().from(offers).where(eq(offers.id, offerId)).limit(1);
   if (!offer) return null;
 
-  const items = await db.execute<any>(sql`
-    SELECT oi.*, p.name as product_name FROM offer_items oi
+  const itemsRaw = await db.execute<any>(sql`
+    SELECT oi.*, p.name as product_name, oi.unit_price as "unitPrice", oi.quantity as quantity
+    FROM offer_items oi
     JOIN products p ON p.id = oi.product_id
     WHERE oi.offer_id = ${offerId}::uuid
   `);
+
+  const items = dbRows(itemsRaw).map((r: any) => ({
+    id: r.id,
+    offerId: r.offer_id,
+    productId: r.product_id,
+    productName: r.product_name || r.name,
+    quantity: Number(r.quantity),
+    unitPrice: parseFloat(r.unit_price || r.unitPrice || 0),
+    discountPct: parseFloat(r.discount_pct || 0),
+    lineTotal: parseFloat(r.line_total || (r.unit_price * r.quantity) || 0),
+  }));
 
   const negs = await db.select().from(negotiations).where(eq(negotiations.offerId, offerId));
 
@@ -56,7 +74,8 @@ router.post("/:id/accept", async (req, res) => {
   }).where(eq(offers.id, id)).returning();
 
   // Determine commission rate based on merchant subscription
-  const [merchant] = await db.execute<any>(sql`SELECT subscription_plan FROM merchants WHERE id = ${offer.merchantId}::uuid LIMIT 1`);
+  const merchantRaw = await db.execute<any>(sql`SELECT subscription_plan FROM merchants WHERE id = ${offer.merchantId}::uuid LIMIT 1`);
+  const merchant = (Array.isArray(merchantRaw) ? merchantRaw : (merchantRaw?.rows ?? []))[0];
   const commissionPct = merchant?.subscription_plan === "PREMIUM" ? 1.0 : 2.0;
   const grossAmt = parseFloat(finalPrice!.toString());
   const commissionAmt = parseFloat((grossAmt * commissionPct / 100).toFixed(2));

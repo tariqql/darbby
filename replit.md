@@ -152,6 +152,42 @@ darbby-monorepo/
 - `SESSION_SECRET` — JWT signing secret
 - `GOOGLE_MAPS_API_KEY` — Optional: enables real Google Maps routes (falls back to straight-line encoding)
 
+## Frontend Screens
+
+### Customer App (9 screens)
+- `/` or `/login` — **AuthPage**: Login/Register with traveler/merchant tab switch
+- `/user/trips` — **UserDashboard**: Trip list with status badges and departure time
+- `/user/trips/new` — **CreateTrip**: New trip form with origin/destination + departure time
+- `/user/trips/:id` — **TripDetail**: Trip info + received offers list
+- `/user/offers/:id` — **UserOfferDetail**: Offer details, items, negotiation history, accept/reject/counter
+- `/user/vehicles` — **VehicleList**: Vehicle cards with fuel type, plate, delete/edit
+- `/user/vehicles/new` or `/user/vehicles/:id/edit` — **VehicleForm**: Add/edit vehicle form
+- `/user/profile` — **UserProfile**: Account info, email, logout
+- `/notifications` — **NotificationCenter**: Notification feed with mark-as-read
+
+### Merchant App (11 screens)
+- `/merchant/dashboard` — **MerchantDashboard**: Stats (revenue, offers, nearby trips) + weekly chart
+- `/merchant/trips` — **NearbyTrips**: Active trips near branches, send offer CTA
+- `/merchant/trips/:id/offer` — **SendOffer**: Send offer with product selection + auto-negotiator toggle
+- `/merchant/offers` — **MerchantOffers**: Sent offers list with status + date
+- `/merchant/offers/:id` — **MerchantOfferDetail**: Offer detail, negotiation history, accept/counter
+- `/merchant/branches` — **BranchList**: Branch cards with coordinates, radius, active status
+- `/merchant/branches/new` or `/:id/edit` — **BranchForm**: Add/edit branch location form
+- `/merchant/products` — **ProductList**: Product catalog cards with price, category, availability
+- `/merchant/products/new` or `/:id/edit` — **ProductForm**: Add/edit product form
+- `/merchant/commission` — **CommissionLedger**: Commission summary cards + detailed table
+- `/merchant/settings` — **MerchantSettings**: Profile edit form + auto-negotiator quick link
+- `/merchant/auto-negotiator` — **AutoNegotiatorSettings**: Min/max discount, product selection
+
+## Critical Notes
+
+- **fuelType enum** (PostgreSQL): `PETROL_91`, `PETROL_95`, `DIESEL`, `ELECTRIC`, `HYBRID` — NOT `PETROL`
+- **db.execute() pattern**: Always use `dbRows<T>(result)` helper to extract rows — never destructure directly. Added in trips.ts, merchant.ts, and offers.ts
+- **offer.items**: Returns mapped array of `{ id, offerId, productId, productName, quantity, unitPrice, lineTotal }`
+- **Commission rates**: 1% PREMIUM, 2% FREE — auto-calculated on offer ACCEPTED
+- **Seed script**: `npx tsx scripts/seed-demo.ts` — cleans and recreates all demo data
+- **Demo accounts**: Travelers: ahmed@demo.com / sara@demo.com | Merchants: gulf@demo.com / food@demo.com / hotel@demo.com — all password `demo1234`
+
 ## Commands
 
 - `pnpm --filter @workspace/api-server run dev` — Start API server

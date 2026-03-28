@@ -41,7 +41,7 @@ export function MerchantOffers() {
                       {offer.isAutoOffer && <Badge variant="accent" className="bg-accent/20 text-accent">تلقائي</Badge>}
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      تم الإرسال: {format(new Date(offer.createdAt!), 'dd MMM, HH:mm', { locale: arSA })}
+                      تم الإرسال: {offer.createdAt ? format(new Date(offer.createdAt), 'dd MMM, HH:mm', { locale: arSA }) : "—"}
                     </p>
                   </div>
                   <div className="text-left">

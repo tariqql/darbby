@@ -14,16 +14,23 @@ router.use(requireActor("MERCHANT"));
 
 function auth(req: any): JwtPayload { return req.auth; }
 
+/** Safely extract rows from db.execute() — handles both QueryResult and plain arrays */
+function dbRows<T>(result: any): T[] {
+  if (Array.isArray(result)) return result as T[];
+  if (result && Array.isArray(result.rows)) return result.rows as T[];
+  return [];
+}
+
 async function getOfferWithDetails(offerId: string) {
   const [offer] = await db.select().from(offers).where(eq(offers.id, offerId)).limit(1);
   if (!offer) return null;
-  const items = await db.execute<any>(sql`
+  const itemsRaw = await db.execute<any>(sql`
     SELECT oi.*, p.name as product_name FROM offer_items oi
     JOIN products p ON p.id = oi.product_id
     WHERE oi.offer_id = ${offerId}::uuid
   `);
   const negs = await db.select().from(negotiations).where(eq(negotiations.offerId, offerId));
-  return { ...offer, items, negotiations: negs };
+  return { ...offer, items: dbRows(itemsRaw), negotiations: negs };
 }
 
 // ─── PROFILE ─────────────────────────────────────────────────────────────
@@ -54,7 +61,7 @@ router.put("/profile", async (req, res) => {
 router.get("/stats", async (req, res) => {
   const { id } = auth(req);
 
-  const [stats] = await db.execute<any>(sql`
+  const statsRaw = await db.execute<any>(sql`
     SELECT
       COUNT(*)::int AS total_offers,
       SUM(CASE WHEN status = 'ACCEPTED' THEN 1 ELSE 0 END)::int AS accepted_offers,
@@ -62,8 +69,9 @@ router.get("/stats", async (req, res) => {
       COALESCE(SUM(CASE WHEN status = 'ACCEPTED' THEN final_price ELSE 0 END), 0) AS total_revenue
     FROM offers WHERE merchant_id = ${id}::uuid
   `);
+  const stats = dbRows<any>(statsRaw)[0] ?? {};
 
-  const [nearby] = await db.execute<any>(sql`
+  const nearbyRaw = await db.execute<any>(sql`
     SELECT COUNT(*)::int AS cnt
     FROM trips t
     JOIN merchant_branches mb ON mb.merchant_id = ${id}::uuid AND mb.status = 'ACTIVE'
@@ -71,6 +79,7 @@ router.get("/stats", async (req, res) => {
       AND t.route_geom IS NOT NULL
       AND ST_DWithin(mb.location::geometry, t.route_geom::geometry, mb.service_radius_km * 1000)
   `);
+  const nearby = dbRows<any>(nearbyRaw)[0] ?? {};
 
   res.json({
     totalOffers: stats.total_offers || 0,
@@ -84,7 +93,7 @@ router.get("/stats", async (req, res) => {
 // ─── COMMISSION ────────────────────────────────────────────────────────────
 router.get("/commission", async (req, res) => {
   const { id } = auth(req);
-  const [summary] = await db.execute<any>(sql`
+  const summaryRaw = await db.execute<any>(sql`
     SELECT
       COUNT(*)::int AS total_deals,
       COALESCE(SUM(gross_amount), 0) AS total_gross,
@@ -94,6 +103,7 @@ router.get("/commission", async (req, res) => {
       COALESCE(SUM(CASE WHEN ledger_status='PENDING' THEN commission_amount ELSE 0 END), 0) AS pending
     FROM commission_ledger WHERE merchant_id = ${id}::uuid
   `);
+  const summary = dbRows<any>(summaryRaw)[0] ?? {};
   res.json({
     totalDeals: summary.total_deals || 0,
     totalGross: parseFloat(summary.total_gross || "0"),
@@ -112,7 +122,7 @@ router.get("/trips", async (req, res) => {
   let branchCondition = sql`mb.merchant_id = ${id}::uuid`;
   if (branchId) branchCondition = sql`mb.id = ${branchId}::uuid AND mb.merchant_id = ${id}::uuid`;
 
-  const nearby = await db.execute<any>(sql`
+  const nearbyRaw = await db.execute<any>(sql`
     SELECT DISTINCT ON (t.id)
       t.*,
       mb.id AS matched_branch_id,
@@ -132,7 +142,7 @@ router.get("/trips", async (req, res) => {
     LIMIT 100
   `);
 
-  res.json(nearby);
+  res.json(dbRows(nearbyRaw));
 });
 
 // POST /api/merchant/trips/:tripId/offer — Send offer for a trip
@@ -143,7 +153,8 @@ router.post("/trips/:tripId/offer", async (req, res) => {
 
   if (!items?.length || !expiresAt) { res.status(400).json({ error: "items and expiresAt are required" }); return; }
 
-  const [trip] = await db.execute<any>(sql`SELECT * FROM trips WHERE id = ${tripId}::uuid AND status = 'ACTIVE' LIMIT 1`);
+  const tripRaw = await db.execute<any>(sql`SELECT * FROM trips WHERE id = ${tripId}::uuid AND status = 'ACTIVE' LIMIT 1`);
+  const trip = dbRows<any>(tripRaw)[0];
   if (!trip) { res.status(404).json({ error: "Trip not found or not active" }); return; }
 
   const totalPrice = items.reduce((s: number, i: any) => s + i.unitPrice * i.quantity, 0);
@@ -184,10 +195,11 @@ router.get("/offers", async (req, res) => {
   let whereClause = sql`merchant_id = ${id}::uuid`;
   if (statusFilter) whereClause = sql`merchant_id = ${id}::uuid AND status = ${statusFilter}::offer_status`;
 
-  const [{ total }] = await db.execute<any>(sql`SELECT COUNT(*)::int AS total FROM offers WHERE ${whereClause}`);
-  const data = await db.execute<any>(sql`SELECT * FROM offers WHERE ${whereClause} ORDER BY created_at DESC LIMIT ${pageSize} OFFSET ${offset}`);
+  const countRaw = await db.execute<any>(sql`SELECT COUNT(*)::int AS total FROM offers WHERE ${whereClause}`);
+  const total = (dbRows<any>(countRaw)[0] ?? {}).total ?? 0;
+  const dataRaw = await db.execute<any>(sql`SELECT * FROM offers WHERE ${whereClause} ORDER BY created_at DESC LIMIT ${pageSize} OFFSET ${offset}`);
 
-  res.json({ data, total, page, pageSize });
+  res.json({ data: dbRows(dataRaw), total, page, pageSize });
 });
 
 // POST /api/merchant/offers/:id/accept-counter — Merchant accepts customer counter
@@ -245,11 +257,11 @@ router.post("/offers/:id/counter", async (req, res) => {
 // ─── BRANCHES ─────────────────────────────────────────────────────────────
 router.get("/branches", async (req, res) => {
   const { id } = auth(req);
-  const branches = await db.execute<any>(sql`
+  const raw = await db.execute<any>(sql`
     SELECT *, ST_X(location::geometry) AS lng, ST_Y(location::geometry) AS lat
     FROM merchant_branches WHERE merchant_id = ${id}::uuid ORDER BY created_at ASC
   `);
-  res.json(branches);
+  res.json(dbRows(raw));
 });
 
 router.post("/branches", async (req, res) => {
@@ -262,13 +274,14 @@ router.post("/branches", async (req, res) => {
   }
 
   const geog = `SRID=4326;POINT(${lng} ${lat})`;
-  const [branch] = await db.execute<any>(sql`
+  const branchRaw = await db.execute<any>(sql`
     INSERT INTO merchant_branches (id, merchant_id, branch_name, branch_code, location, address_text, service_radius_km, is_primary, working_hours, phone)
     VALUES (uuid_generate_v4(), ${id}::uuid, ${branchName}, ${branchCode ?? null}, ST_GeogFromText(${geog}),
       ${addressText ?? null}, ${serviceRadiusKm ?? 10.0}, ${isPrimary ?? false},
       ${workingHours ? JSON.stringify(workingHours) : null}::jsonb, ${phone ?? null})
     RETURNING *, ST_X(location::geometry) AS lng, ST_Y(location::geometry) AS lat
   `);
+  const branch = dbRows<any>(branchRaw)[0];
 
   await writeAuditLog({ tableName: "merchant_branches", recordId: branch.id, operation: "INSERT", actorType: "MERCHANT", actorId: id, newValues: { branchName, lat, lng } });
   res.status(201).json(branch);
@@ -279,7 +292,8 @@ router.put("/branches/:id", async (req, res) => {
   const { id } = req.params;
   const { branchName, branchCode, lat, lng, addressText, serviceRadiusKm, isPrimary, workingHours, phone, status } = req.body;
 
-  const [existing] = await db.execute<any>(sql`SELECT * FROM merchant_branches WHERE id = ${id}::uuid AND merchant_id = ${merchantId}::uuid LIMIT 1`);
+  const existingRaw = await db.execute<any>(sql`SELECT * FROM merchant_branches WHERE id = ${id}::uuid AND merchant_id = ${merchantId}::uuid LIMIT 1`);
+  const existing = dbRows<any>(existingRaw)[0];
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
   let geogUpdate = sql`location = location`;
@@ -287,7 +301,7 @@ router.put("/branches/:id", async (req, res) => {
     geogUpdate = sql`location = ST_GeogFromText(${`SRID=4326;POINT(${lng} ${lat})`})`;
   }
 
-  const [updated] = await db.execute<any>(sql`
+  const updatedRaw = await db.execute<any>(sql`
     UPDATE merchant_branches SET
       branch_name = COALESCE(${branchName ?? null}, branch_name),
       branch_code = COALESCE(${branchCode ?? null}, branch_code),
@@ -302,6 +316,7 @@ router.put("/branches/:id", async (req, res) => {
     WHERE id = ${id}::uuid AND merchant_id = ${merchantId}::uuid
     RETURNING *, ST_X(location::geometry) AS lng, ST_Y(location::geometry) AS lat
   `);
+  const updated = dbRows<any>(updatedRaw)[0];
 
   res.json(updated);
 });
@@ -373,13 +388,13 @@ router.get("/auto-negotiator", async (req, res) => {
   const [settings] = await db.select().from(autoNegotiatorSettings).where(eq(autoNegotiatorSettings.merchantId, id)).limit(1);
   if (!settings) { res.status(404).json({ error: "Not configured" }); return; }
 
-  const prods = await db.execute<any>(sql`
+  const prodsRaw = await db.execute<any>(sql`
     SELECT anp.*, p.name as product_name FROM auto_negotiator_products anp
     JOIN products p ON p.id = anp.product_id
     WHERE anp.negotiator_id = ${settings.id}::uuid
   `);
 
-  res.json({ ...settings, products: prods });
+  res.json({ ...settings, products: dbRows(prodsRaw) });
 });
 
 router.put("/auto-negotiator", async (req, res) => {
@@ -407,22 +422,24 @@ router.put("/auto-negotiator", async (req, res) => {
   if (prodRules?.length) {
     await db.delete(autoNegotiatorProducts).where(eq(autoNegotiatorProducts.negotiatorId, settings.id));
     for (const p of prodRules) {
+      const minPct = p.minDiscountPct ?? p.minDiscountPercent ?? 0;
+      const maxPct = p.maxDiscountPct ?? p.maxDiscountPercent ?? 0;
       await db.insert(autoNegotiatorProducts).values({
         negotiatorId: settings.id,
         productId: p.productId,
-        minDiscountPct: p.minDiscountPct.toString(),
-        maxDiscountPct: p.maxDiscountPct.toString(),
+        minDiscountPct: minPct.toString(),
+        maxDiscountPct: maxPct.toString(),
       });
     }
   }
 
-  const prods = await db.execute<any>(sql`
+  const prodsRaw2 = await db.execute<any>(sql`
     SELECT anp.*, p.name as product_name FROM auto_negotiator_products anp
     JOIN products p ON p.id = anp.product_id
     WHERE anp.negotiator_id = ${settings.id}::uuid
   `);
 
-  res.json({ ...settings, products: prods });
+  res.json({ ...settings, products: dbRows(prodsRaw2) });
 });
 
 export default router;

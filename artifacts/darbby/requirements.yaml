@@ -1,0 +1,24 @@
+packages:
+  "framer-motion": "For fluid page transitions and micro-interactions"
+  "recharts": "For beautiful merchant dashboard analytics charts"
+  "jwt-decode": "To decode auth tokens and manage session state"
+  "date-fns": "For elegant date and time formatting"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility to efficiently merge Tailwind CSS classes"
+  "@radix-ui/react-dialog": "For accessible modal dialogs"
+  "@radix-ui/react-slot": "For component composition"
+  "@radix-ui/react-tabs": "For tabbed interfaces in auth and dashboards"
+  "@radix-ui/react-label": "For accessible form labels"
+
+images:
+  - path: "artifacts/darbby/public/images/hero-bg.png"
+    description: "Abstract luxury dark navy and gold gradient mesh, minimal fintech travel background, soft studio lighting, highly polished"
+    aspect_ratio: "16:9"
+  - path: "artifacts/darbby/public/images/logo-mark.png"
+    description: "Minimal geometric map pin logo intertwined with an elegant line, rendered in gold on a solid dark navy background, premium corporate identity"
+    aspect_ratio: "1:1"
+
+notes:
+  - Global window.fetch will be patched in main.tsx to automatically append the Authorization header for all /api/* requests.
+  - UI is RTL-first, optimized for Arabic text using Tajawal font.
+  - Using Radix primitives for accessibility where needed, styled with Tailwind CSS v4.

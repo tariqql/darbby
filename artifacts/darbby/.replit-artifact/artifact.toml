@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Darbby Platform"
+version = "1.0.0"
+id = "artifacts/darbby"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24266
+
+[services.development]
+run = "pnpm --filter @workspace/darbby run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/darbby", "run", "build" ]
+publicDir = "artifacts/darbby/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24266"
+BASE_PATH = "/"

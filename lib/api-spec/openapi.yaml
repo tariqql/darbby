@@ -1,22 +1,43 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 1.0.0
+  description: Darbby Platform API — Backend for customer and merchant apps
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication — users and merchants
+  - name: trips
+    description: Customer trip management
+  - name: vehicles
+    description: Customer vehicle profiles
+  - name: offers
+    description: Offer lifecycle
+  - name: negotiations
+    description: Price negotiation rounds
+  - name: merchants
+    description: Merchant management
+  - name: branches
+    description: Merchant branch management
+  - name: products
+    description: Product catalog
+  - name: auto-negotiator
+    description: Auto-negotiator settings
+  - name: notifications
+    description: Push notification feed
+  - name: geo
+    description: Geographic and map utilities
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +45,1415 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ─── AUTH ─────────────────────────────────────────────────────────────────
+  /auth/user/register:
+    post:
+      operationId: registerUser
+      tags: [auth]
+      summary: Register a new customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRegisterRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "409":
+          description: Email already registered
+
+  /auth/user/login:
+    post:
+      operationId: loginUser
+      tags: [auth]
+      summary: Customer login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+
+  /auth/merchant/register:
+    post:
+      operationId: registerMerchant
+      tags: [auth]
+      summary: Register a new merchant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MerchantRegisterRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+
+  /auth/merchant/login:
+    post:
+      operationId: loginMerchant
+      tags: [auth]
+      summary: Merchant login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+
+  # ─── VEHICLES ─────────────────────────────────────────────────────────────
+  /vehicles:
+    get:
+      operationId: listVehicles
+      tags: [vehicles]
+      summary: List my vehicle profiles
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of vehicles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VehicleProfile"
+    post:
+      operationId: createVehicle
+      tags: [vehicles]
+      summary: Add a vehicle profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVehicleRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VehicleProfile"
+
+  /vehicles/{id}:
+    put:
+      operationId: updateVehicle
+      tags: [vehicles]
+      summary: Update a vehicle profile
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVehicleRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VehicleProfile"
+    delete:
+      operationId: deleteVehicle
+      tags: [vehicles]
+      summary: Delete a vehicle profile
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      responses:
+        "204":
+          description: Deleted
+
+  # ─── TRIPS ────────────────────────────────────────────────────────────────
+  /trips:
+    get:
+      operationId: listMyTrips
+      tags: [trips]
+      summary: List my trips
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, COMPLETED, CANCELLED]
+      responses:
+        "200":
+          description: List of trips
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Trip"
+    post:
+      operationId: createTrip
+      tags: [trips]
+      summary: Create a new trip
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTripRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trip"
+
+  /trips/{id}:
+    get:
+      operationId: getTripById
+      tags: [trips]
+      summary: Get trip details with matched offers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      responses:
+        "200":
+          description: Trip with offers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TripDetail"
+    patch:
+      operationId: updateTripStatus
+      tags: [trips]
+      summary: Update trip status
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [COMPLETED, CANCELLED]
+              required: [status]
+      responses:
+        "200":
+          description: Updated trip
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trip"
+
+  /trips/{id}/nearby-merchants:
+    get:
+      operationId: getNearbyMerchants
+      tags: [trips]
+      summary: Get merchants whose branches intersect with the trip route
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      responses:
+        "200":
+          description: Nearby merchant branches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NearbyBranch"
+
+  # ─── OFFERS ───────────────────────────────────────────────────────────────
+  /offers/{id}:
+    get:
+      operationId: getOffer
+      tags: [offers]
+      summary: Get offer details
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      responses:
+        "200":
+          description: Offer with items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfferDetail"
+
+  /offers/{id}/accept:
+    post:
+      operationId: acceptOffer
+      tags: [offers]
+      summary: Accept an offer (customer)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      responses:
+        "200":
+          description: Offer accepted and commission ledger entry created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfferDetail"
+
+  /offers/{id}/reject:
+    post:
+      operationId: rejectOffer
+      tags: [offers]
+      summary: Reject an offer (customer)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      responses:
+        "200":
+          description: Offer rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfferDetail"
+
+  /offers/{id}/counter:
+    post:
+      operationId: counterOffer
+      tags: [offers]
+      summary: Submit a counter-offer (negotiation round)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CounterOfferRequest"
+      responses:
+        "200":
+          description: Counter-offer submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Negotiation"
+
+  # ─── MERCHANT OFFERS ──────────────────────────────────────────────────────
+  /merchant/trips:
+    get:
+      operationId: listActiveTripsMerchant
+      tags: [merchants]
+      summary: List active trips near merchant branches
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: branchId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching trips
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Trip"
+
+  /merchant/trips/{tripId}/offer:
+    post:
+      operationId: sendOffer
+      tags: [merchants]
+      summary: Send an offer for a trip
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tripId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendOfferRequest"
+      responses:
+        "201":
+          description: Offer sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfferDetail"
+
+  /merchant/offers:
+    get:
+      operationId: listMerchantOffers
+      tags: [merchants]
+      summary: List merchant's sent offers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Offers list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedOffers"
+
+  /merchant/offers/{id}/accept-counter:
+    post:
+      operationId: acceptCounter
+      tags: [merchants]
+      summary: Merchant accepts a customer counter-offer
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      responses:
+        "200":
+          description: Counter accepted, offer finalized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OfferDetail"
+
+  /merchant/offers/{id}/counter:
+    post:
+      operationId: merchantCounter
+      tags: [merchants]
+      summary: Merchant sends a counter-offer
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CounterOfferRequest"
+      responses:
+        "200":
+          description: Counter submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Negotiation"
+
+  # ─── MERCHANT PROFILE ─────────────────────────────────────────────────────
+  /merchant/profile:
+    get:
+      operationId: getMerchantProfile
+      tags: [merchants]
+      summary: Get merchant profile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Merchant profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantProfile"
+    put:
+      operationId: updateMerchantProfile
+      tags: [merchants]
+      summary: Update merchant profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMerchantProfileRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantProfile"
+
+  # ─── BRANCHES ─────────────────────────────────────────────────────────────
+  /merchant/branches:
+    get:
+      operationId: listBranches
+      tags: [branches]
+      summary: List merchant branches
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Branches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MerchantBranch"
+    post:
+      operationId: createBranch
+      tags: [branches]
+      summary: Create a new branch
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBranchRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantBranch"
+
+  /merchant/branches/{id}:
+    put:
+      operationId: updateBranch
+      tags: [branches]
+      summary: Update a branch
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBranchRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantBranch"
+    delete:
+      operationId: deleteBranch
+      tags: [branches]
+      summary: Delete a branch
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      responses:
+        "204":
+          description: Deleted
+
+  # ─── PRODUCTS ─────────────────────────────────────────────────────────────
+  /merchant/products:
+    get:
+      operationId: listProducts
+      tags: [products]
+      summary: List merchant products
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+    post:
+      operationId: createProduct
+      tags: [products]
+      summary: Create a product
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+  /merchant/products/{id}:
+    put:
+      operationId: updateProduct
+      tags: [products]
+      summary: Update a product
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+    delete:
+      operationId: deleteProduct
+      tags: [products]
+      summary: Delete a product
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      responses:
+        "204":
+          description: Deleted
+
+  # ─── AUTO-NEGOTIATOR ──────────────────────────────────────────────────────
+  /merchant/auto-negotiator:
+    get:
+      operationId: getAutoNegSettings
+      tags: [auto-negotiator]
+      summary: Get auto-negotiator settings
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoNegSettings"
+    put:
+      operationId: updateAutoNegSettings
+      tags: [auto-negotiator]
+      summary: Update auto-negotiator settings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAutoNegRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoNegSettings"
+
+  # ─── NOTIFICATIONS ────────────────────────────────────────────────────────
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: List my notifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: unreadOnly
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+
+  /notifications/{id}/read:
+    post:
+      operationId: markNotificationRead
+      tags: [notifications]
+      summary: Mark a notification as read
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/UuidId"
+      responses:
+        "204":
+          description: Marked as read
+
+  # ─── GEO / MAPS ──────────────────────────────────────────────────────────
+  /geo/route:
+    post:
+      operationId: getRoute
+      tags: [geo]
+      summary: Get route polyline and distance from Google Maps
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RouteRequest"
+      responses:
+        "200":
+          description: Route information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouteResponse"
+
+  # ─── MERCHANT STATS ───────────────────────────────────────────────────────
+  /merchant/stats:
+    get:
+      operationId: getMerchantStats
+      tags: [merchants]
+      summary: Get merchant dashboard stats
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantStats"
+
+  /merchant/commission:
+    get:
+      operationId: getMerchantCommission
+      tags: [merchants]
+      summary: Get commission ledger summary
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Commission summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommissionSummary"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    UuidId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+
   schemas:
     HealthStatus:
       type: object
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    # ─── Auth ───────────────────────────────────────────────────────────────
+    UserRegisterRequest:
+      type: object
+      properties:
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        password:
+          type: string
+          minLength: 8
+      required: [fullName, email, password]
+
+    MerchantRegisterRequest:
+      type: object
+      properties:
+        businessName:
+          type: string
+        ownerName:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        password:
+          type: string
+        commercialRegNo:
+          type: string
+        commercialRegDocUrl:
+          type: string
+        commercialRegExpiry:
+          type: string
+          format: date
+      required: [businessName, ownerName, email, phone, password, commercialRegNo, commercialRegDocUrl, commercialRegExpiry]
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required: [email, password]
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        actor:
+          type: string
+          enum: [USER, MERCHANT]
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+      required: [token, actor, id, email, name]
+
+    # ─── Vehicle ─────────────────────────────────────────────────────────────
+    CreateVehicleRequest:
+      type: object
+      properties:
+        nickname:
+          type: string
+        vehicleType:
+          type: string
+        make:
+          type: string
+        model:
+          type: string
+        year:
+          type: integer
+        color:
+          type: string
+        fuelType:
+          type: string
+          enum: [PETROL_91, PETROL_95, DIESEL, ELECTRIC, HYBRID]
+        plateNo:
+          type: string
+        tankCapacityLiters:
+          type: number
+        isPrimary:
+          type: boolean
+      required: [nickname, vehicleType, make, model, year, fuelType]
+
+    VehicleProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        nickname:
+          type: string
+        vehicleType:
+          type: string
+        make:
+          type: string
+        model:
+          type: string
+        year:
+          type: integer
+        color:
+          type: string
+        fuelType:
+          type: string
+        plateNo:
+          type: string
+        tankCapacityLiters:
+          type: number
+        isPrimary:
+          type: boolean
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, userId, nickname, vehicleType, make, model, year, fuelType]
+
+    # ─── Trip ────────────────────────────────────────────────────────────────
+    CreateTripRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        tripPurpose:
+          type: string
+          enum: [WORK, TOURISM, UMRAH, FAMILY_VISIT, MEDICAL, EDUCATION, OTHER]
+        originName:
+          type: string
+        originLat:
+          type: number
+        originLng:
+          type: number
+        destinationName:
+          type: string
+        destLat:
+          type: number
+        destLng:
+          type: number
+        routePolyline:
+          type: string
+        departureTime:
+          type: string
+          format: date-time
+        arrivalTime:
+          type: string
+          format: date-time
+        vehicleProfileId:
+          type: string
+        isPublic:
+          type: boolean
+      required: [originName, originLat, originLng, destinationName, destLat, destLng, departureTime, tripPurpose]
+
+    Trip:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        vehicleProfileId:
+          type: string
+        title:
+          type: string
+        tripPurpose:
+          type: string
+        originName:
+          type: string
+        destinationName:
+          type: string
+        routePolyline:
+          type: string
+        departureTime:
+          type: string
+          format: date-time
+        arrivalTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+        isPublic:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, userId, tripPurpose, originName, destinationName, departureTime, status]
+
+    TripDetail:
+      allOf:
+        - $ref: "#/components/schemas/Trip"
+        - type: object
+          properties:
+            offers:
+              type: array
+              items:
+                $ref: "#/components/schemas/OfferDetail"
+
+    NearbyBranch:
+      type: object
+      properties:
+        branchId:
+          type: string
+        merchantId:
+          type: string
+        businessName:
+          type: string
+        branchName:
+          type: string
+        distanceMeters:
+          type: number
+        addressText:
+          type: string
+        serviceRadiusKm:
+          type: number
+      required: [branchId, merchantId, businessName, branchName]
+
+    # ─── Offer ───────────────────────────────────────────────────────────────
+    SendOfferRequest:
+      type: object
+      properties:
+        branchId:
+          type: string
+        message:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productId:
+                type: string
+              quantity:
+                type: integer
+              unitPrice:
+                type: number
+            required: [productId, quantity, unitPrice]
+      required: [items, expiresAt]
+
+    CounterOfferRequest:
+      type: object
+      properties:
+        proposedPrice:
+          type: number
+        message:
+          type: string
+      required: [proposedPrice]
+
+    OfferDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        tripId:
+          type: string
+        merchantId:
+          type: string
+        branchId:
+          type: string
+        message:
+          type: string
+        totalPrice:
+          type: number
+        finalPrice:
+          type: number
+        status:
+          type: string
+        isAutoOffer:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OfferItemDetail"
+        negotiations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Negotiation"
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, tripId, merchantId, totalPrice, status]
+
+    OfferItemDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        productId:
+          type: string
+        productName:
+          type: string
+        quantity:
+          type: integer
+        unitPrice:
+          type: number
+        negotiatedPrice:
+          type: number
+      required: [id, productId, quantity, unitPrice]
+
+    Negotiation:
+      type: object
+      properties:
+        id:
+          type: string
+        offerId:
+          type: string
+        senderType:
+          type: string
+          enum: [USER, MERCHANT, SYSTEM]
+        proposedPrice:
+          type: number
+        message:
+          type: string
+        isAuto:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, offerId, senderType, proposedPrice]
+
+    PaginatedOffers:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OfferDetail"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+      required: [data, total, page, pageSize]
+
+    # ─── Merchant ────────────────────────────────────────────────────────────
+    MerchantProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        businessName:
+          type: string
+        ownerName:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        status:
+          type: string
+        subscriptionPlan:
+          type: string
+        nationalAddress:
+          type: string
+        nafathVerified:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, businessName, ownerName, email, phone, status]
+
+    UpdateMerchantProfileRequest:
+      type: object
+      properties:
+        businessName:
+          type: string
+        ownerName:
+          type: string
+        phone:
+          type: string
+        nationalAddress:
+          type: string
+        fcmToken:
+          type: string
+
+    # ─── Branch ──────────────────────────────────────────────────────────────
+    MerchantBranch:
+      type: object
+      properties:
+        id:
+          type: string
+        merchantId:
+          type: string
+        branchName:
+          type: string
+        branchCode:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+        addressText:
+          type: string
+        serviceRadiusKm:
+          type: number
+        status:
+          type: string
+        isPrimary:
+          type: boolean
+        workingHours:
+          type: object
+        phone:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, merchantId, branchName, status, isPrimary]
+
+    CreateBranchRequest:
+      type: object
+      properties:
+        branchName:
+          type: string
+        branchCode:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+        addressText:
+          type: string
+        serviceRadiusKm:
+          type: number
+        isPrimary:
+          type: boolean
+        workingHours:
+          type: object
+        phone:
+          type: string
+      required: [branchName, lat, lng]
+
+    # ─── Product ─────────────────────────────────────────────────────────────
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+        merchantId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        category:
+          type: string
+        targetFuelType:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+        stockQty:
+          type: integer
+        isAvailable:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, merchantId, name, price]
+
+    CreateProductRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        category:
+          type: string
+        targetFuelType:
+          type: string
+          enum: [PETROL_91, PETROL_95, DIESEL, ELECTRIC, HYBRID]
+        images:
+          type: array
+          items:
+            type: string
+        stockQty:
+          type: integer
+        isAvailable:
+          type: boolean
+      required: [name, price]
+
+    # ─── Auto-Negotiator ──────────────────────────────────────────────────────
+    AutoNegSettings:
+      type: object
+      properties:
+        id:
+          type: string
+        merchantId:
+          type: string
+        isEnabled:
+          type: boolean
+        responseDelayMin:
+          type: integer
+        purposeRules:
+          type: object
+        products:
+          type: array
+          items:
+            $ref: "#/components/schemas/AutoNegProduct"
+      required: [id, merchantId, isEnabled]
+
+    AutoNegProduct:
+      type: object
+      properties:
+        id:
+          type: string
+        productId:
+          type: string
+        productName:
+          type: string
+        minDiscountPct:
+          type: number
+        maxDiscountPct:
+          type: number
+      required: [id, productId, minDiscountPct, maxDiscountPct]
+
+    UpdateAutoNegRequest:
+      type: object
+      properties:
+        isEnabled:
+          type: boolean
+        responseDelayMin:
+          type: integer
+        purposeRules:
+          type: object
+        products:
+          type: array
+          items:
+            type: object
+            properties:
+              productId:
+                type: string
+              minDiscountPct:
+                type: number
+              maxDiscountPct:
+                type: number
+            required: [productId, minDiscountPct, maxDiscountPct]
+
+    # ─── Notifications ────────────────────────────────────────────────────────
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        recipientType:
+          type: string
+        recipientId:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        data:
+          type: object
+        isRead:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, recipientType, recipientId, type, title, body, isRead]
+
+    # ─── Geo / Maps ───────────────────────────────────────────────────────────
+    RouteRequest:
+      type: object
+      properties:
+        originLat:
+          type: number
+        originLng:
+          type: number
+        destLat:
+          type: number
+        destLng:
+          type: number
+      required: [originLat, originLng, destLat, destLng]
+
+    RouteResponse:
+      type: object
+      properties:
+        polyline:
+          type: string
+        distanceMeters:
+          type: integer
+        durationSeconds:
+          type: integer
+        distanceText:
+          type: string
+        durationText:
+          type: string
+      required: [polyline, distanceMeters, durationSeconds]
+
+    # ─── Stats ────────────────────────────────────────────────────────────────
+    MerchantStats:
+      type: object
+      properties:
+        totalOffers:
+          type: integer
+        acceptedOffers:
+          type: integer
+        pendingOffers:
+          type: integer
+        totalRevenue:
+          type: number
+        activeTripsNearby:
+          type: integer
+      required: [totalOffers, acceptedOffers, pendingOffers, totalRevenue, activeTripsNearby]
+
+    CommissionSummary:
+      type: object
+      properties:
+        totalDeals:
+          type: integer
+        totalGross:
+          type: number
+        totalCommission:
+          type: number
+        totalNet:
+          type: number
+        collected:
+          type: number
+        pending:
+          type: number
+      required: [totalDeals, totalGross, totalCommission, totalNet, collected, pending]

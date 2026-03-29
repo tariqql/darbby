@@ -280,11 +280,36 @@ Full negotiation engine across 5 tested scenarios (S10-S13), constraints (S01-S0
 ## Critical Notes
 
 - **fuelType enum** (PostgreSQL): `PETROL_91`, `PETROL_95`, `DIESEL`, `ELECTRIC`, `HYBRID` — NOT `PETROL`
+- **tripPurpose enum** (PostgreSQL): `WORK`, `TOURISM`, `UMRAH`, `FAMILY_VISIT`, `MEDICAL`, `EDUCATION`, `OTHER` — NOT `PERSONAL`
 - **db.execute() pattern**: Always use `dbRows<T>(result)` helper to extract rows — never destructure directly. Added in trips.ts, merchant.ts, and offers.ts
+- **Drizzle UUID null bug**: Drizzle ORM sends `""` (empty string) instead of `NULL` for nullable UUID columns. Use raw `sharedPool.query()` / `merchantsPool.query()` for any INSERT that has optional UUID columns (`branchId`, etc.)
+- **PostGIS ROUND**: `ROUND(double_precision, integer)` fails in PostgreSQL — must cast: `ROUND(value::numeric, 1)`
+- **commission_ledger NOT NULL columns**: `gross_amount`, `commission_rate_pct`, `commission_amount`, `net_to_merchant` are all required. `transaction_id` is nullable despite Drizzle schema saying otherwise.
 - **offer.items**: Returns mapped array of `{ id, offerId, productId, productName, quantity, unitPrice, lineTotal }`
 - **Commission rates**: 1% PREMIUM, 2% FREE — auto-calculated on offer ACCEPTED
 - **Seed script**: `npx tsx scripts/seed-demo.ts` — cleans and recreates all demo data
 - **Demo accounts**: Travelers: ahmed@demo.com / sara@demo.com | Merchants: gulf@demo.com / food@demo.com / hotel@demo.com — all password `demo1234`
+
+## API Improvement Roadmap (Claude-generated, 4 phases)
+
+### Phase 1 — Critical Bug Fixes ✅ COMPLETED
+- `route_geom` computed via `ST_MakeLine` on trip creation (raw pool INSERT)
+- `nearby-merchants` endpoint fixed: `ROUND(::numeric, 1)` + raw pool
+- `branchId` null properly sent to DB (raw pool bypasses Drizzle UUID empty-string bug)
+- `commission_ledger` INSERT includes all NOT NULL columns: `commission_amount`, `net_to_merchant`
+- Trip creation accepts `estimatedDepartureAt` (ISO timestamp) OR `departureTime`
+- All endpoints return camelCase via Drizzle re-fetch
+
+### Phase 2 — Merchant Approval Workflow (PENDING)
+- Merchants currently created as `PENDING` status → need admin approval flow
+- Demo merchants must be `APPROVED` for `nearby-merchants` to return results
+
+### Phase 3 — DINA + Claude Integration (PENDING)
+- Power DINA negotiation engine with `claude-sonnet-4-6` via Replit AI Integration proxy
+- Endpoint: `http://localhost:1106/modelfarm/anthropic`
+
+### Phase 4 — Production Hardening (PENDING)
+- Tests, performance optimization, deployment
 
 ## Commands
 

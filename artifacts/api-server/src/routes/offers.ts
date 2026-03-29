@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { sharedDb, merchantsDb, merchantsPool, customersDb, offers, offerItems, negotiations, transactions, commissionLedger, products, users } from "@workspace/db";
+import { sharedDb, sharedPool, merchantsDb, merchantsPool, customersDb, offers, offerItems, negotiations, transactions, commissionLedger, products, users } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { authenticate, JwtPayload } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/auditLog.js";
@@ -105,16 +105,16 @@ router.post("/:id/accept", async (req, res) => {
     settledAt: new Date(),
   }).returning();
 
-  // Create commission ledger entry in sharedDb
-  await sharedDb.insert(commissionLedger).values({
-    offerId: id,
-    transactionId: txn.id,
-    merchantId: offer.merchantId,
-    branchId: offer.branchId,
-    grossAmount: grossAmt.toString(),
-    commissionRatePct: commissionPct.toString(),
-    ledgerStatus: "PENDING",
-  });
+  // Create commission ledger entry — raw pool guarantees NULL (not "") for branchId
+  // All NOT NULL columns: offer_id, merchant_id, gross_amount, commission_rate_pct, commission_amount, net_to_merchant
+  await sharedPool.query(
+    `INSERT INTO commission_ledger
+       (offer_id, transaction_id, merchant_id, branch_id,
+        gross_amount, commission_rate_pct, commission_amount, net_to_merchant, ledger_status)
+     VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, 'PENDING')`,
+    [id, txn.id, offer.merchantId, offer.branchId ?? null,
+     grossAmt.toString(), commissionPct.toString(), commissionAmt.toString(), netAmt.toString()]
+  );
 
   // Update user price_sensitivity in customersDb using cross-DB data from sharedDb
   // First compute the new sensitivity from sharedDb

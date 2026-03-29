@@ -41,11 +41,13 @@ export const transactions = pgTable("transactions", {
 export const commissionLedger = pgTable("commission_ledger", {
   id: uuid("id").primaryKey().defaultRandom(),
   offerId: uuid("offer_id").notNull().unique().references(() => offers.id),
-  transactionId: uuid("transaction_id").notNull().unique().references(() => transactions.id),
+  transactionId: uuid("transaction_id"),  // nullable in DB
   merchantId: uuid("merchant_id").notNull(),
   branchId: uuid("branch_id"),
   grossAmount: decimal("gross_amount", { precision: 10, scale: 2 }).notNull(),
   commissionRatePct: decimal("commission_rate_pct", { precision: 5, scale: 2 }).notNull(),
+  commissionAmount: decimal("commission_amount", { precision: 10, scale: 2 }).notNull(),
+  netToMerchant: decimal("net_to_merchant", { precision: 10, scale: 2 }).notNull(),
   ledgerStatus: ledgerStatusEnum("ledger_status").notNull().default("PENDING"),
   invoiceNo: varchar("invoice_no", { length: 50 }).unique(),
   invoicedAt: timestamp("invoiced_at", { withTimezone: true }),

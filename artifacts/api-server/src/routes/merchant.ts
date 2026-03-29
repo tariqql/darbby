@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { sharedDb, merchantsDb, merchants, merchantBranches, products, offers, offerItems, negotiations, autoNegotiatorSettings, autoNegotiatorProducts } from "@workspace/db";
+import { sharedDb, sharedPool, merchantsDb, merchants, merchantBranches, products, offers, offerItems, negotiations, autoNegotiatorSettings, autoNegotiatorProducts } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { authenticate, requireActor, JwtPayload } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/auditLog.js";
@@ -194,23 +194,21 @@ router.post("/trips/:tripId/offer", async (req, res) => {
 
   const totalPrice = items.reduce((s: number, i: any) => s + i.unitPrice * i.quantity, 0);
 
-  const [offer] = await sharedDb.insert(offers).values({
-    tripId,
-    merchantId: id,
-    branchId: branchId || null,
-    message: message || null,
-    totalPrice: totalPrice.toString(),
-    expiresAt: new Date(expiresAt),
-    isAutoOffer: false,
-  }).returning();
+  // Raw INSERT to avoid Drizzle sending "" (empty string) for nullable UUID branch_id
+  const offerInsert = await sharedPool.query(
+    `INSERT INTO offers (trip_id, merchant_id, branch_id, message, total_price, expires_at, is_auto_offer)
+     VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, false)
+     RETURNING *`,
+    [tripId, id, branchId || null, message || null, totalPrice.toString(), new Date(expiresAt)]
+  );
+  const offer = offerInsert.rows[0];
 
   for (const item of items) {
-    await sharedDb.insert(offerItems).values({
-      offerId: offer.id,
-      productId: item.productId,
-      quantity: item.quantity.toString(),
-      unitPrice: item.unitPrice.toString(),
-    });
+    await sharedPool.query(
+      `INSERT INTO offer_items (offer_id, product_id, quantity, unit_price)
+       VALUES ($1::uuid, $2::uuid, $3, $4)`,
+      [offer.id, item.productId, item.quantity.toString(), item.unitPrice.toString()]
+    );
   }
 
   await writeAuditLog({ tableName: "offers", recordId: offer.id, operation: "INSERT", actorType: "MERCHANT", actorId: id, newValues: { tripId, totalPrice }, ipAddress: req.ip });
@@ -224,17 +222,24 @@ router.get("/offers", async (req, res) => {
   const { id } = auth(req);
   const page = parseInt(req.query.page as string || "1", 10);
   const pageSize = 20;
-  const offset = (page - 1) * pageSize;
   const statusFilter = req.query.status as string | undefined;
 
-  let whereClause = sql`merchant_id = ${id}::uuid`;
-  if (statusFilter) whereClause = sql`merchant_id = ${id}::uuid AND status = ${statusFilter}::offer_status`;
+  const conditions = [eq(offers.merchantId, id)];
+  if (statusFilter) conditions.push(sql`${offers.status} = ${statusFilter}::offer_status`);
 
-  const countRaw = await sharedDb.execute<any>(sql`SELECT COUNT(*)::int AS total FROM offers WHERE ${whereClause}`);
-  const total = (dbRows<any>(countRaw)[0] ?? {}).total ?? 0;
-  const dataRaw = await sharedDb.execute<any>(sql`SELECT * FROM offers WHERE ${whereClause} ORDER BY created_at DESC LIMIT ${pageSize} OFFSET ${offset}`);
+  const countRaw = await sharedDb.execute<any>(sql`
+    SELECT COUNT(*)::int AS total FROM offers WHERE merchant_id = ${id}::uuid
+    ${statusFilter ? sql`AND status = ${statusFilter}::offer_status` : sql``}
+  `);
+  const total = dbRows<any>(countRaw)[0]?.total ?? 0;
 
-  res.json({ data: dbRows(dataRaw), total, page, pageSize });
+  const data = await sharedDb.select().from(offers)
+    .where(and(...conditions))
+    .orderBy(sql`${offers.createdAt} DESC`)
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+
+  res.json({ data, total, page, pageSize });
 });
 
 // POST /api/merchant/offers/:id/accept-counter — Merchant accepts customer counter

@@ -8,6 +8,7 @@ import merchantRouter from "./merchant.js";
 import notificationsRouter from "./notifications.js";
 import geoRouter from "./geo.js";
 import dinaRouter from "./dina.js";
+import dinaNegoRouter from "./dinaNegotiate.js";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use("/merchant", merchantRouter);
 router.use("/notifications", notificationsRouter);
 router.use("/geo", geoRouter);
 router.use("/dina", dinaRouter);
+router.use("/dina/negotiate", dinaNegoRouter);
 
 export default router;

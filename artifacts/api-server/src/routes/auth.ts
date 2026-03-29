@@ -1,11 +1,15 @@
 import { Router } from "express";
 import { customersDb, merchantsDb, users, merchants } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { signToken } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/auditLog.js";
 
 const router = Router();
+
+function isPgUniqueViolation(err: unknown): boolean {
+  return (err as any)?.cause?.code === "23505" || (err as any)?.code === "23505";
+}
 
 // POST /api/auth/user/register
 router.post("/user/register", async (req, res) => {
@@ -16,19 +20,44 @@ router.post("/user/register", async (req, res) => {
     return;
   }
 
-  const existing = await customersDb.select({ id: users.id }).from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+  const conditions: any[] = [eq(users.email, email.toLowerCase())];
+  if (phone) conditions.push(eq(users.phone, phone));
+
+  const existing = await customersDb
+    .select({ id: users.id, email: users.email, phone: users.phone })
+    .from(users)
+    .where(or(...conditions))
+    .limit(1);
+
   if (existing.length) {
-    res.status(409).json({ error: "Email already registered" });
+    if (existing[0].email === email.toLowerCase()) {
+      res.status(409).json({ error: "Email already registered" });
+    } else {
+      res.status(409).json({ error: "Phone number already registered" });
+    }
     return;
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const [user] = await customersDb.insert(users).values({
-    fullName,
-    email: email.toLowerCase(),
-    phone: phone || null,
-    passwordHash,
-  }).returning();
+
+  let user: typeof users.$inferSelect;
+  try {
+    const result = await customersDb.insert(users).values({
+      fullName,
+      email: email.toLowerCase(),
+      phone: phone || null,
+      passwordHash,
+    }).returning();
+    user = result[0];
+  } catch (err) {
+    if (isPgUniqueViolation(err)) {
+      res.status(409).json({ error: "Email or phone already registered" });
+    } else {
+      console.error("Register insert error:", (err as any)?.message, (err as any)?.cause?.message);
+      res.status(500).json({ error: "Registration failed" });
+    }
+    return;
+  }
 
   await writeAuditLog({
     tableName: "users",
@@ -42,6 +71,28 @@ router.post("/user/register", async (req, res) => {
 
   const token = signToken({ id: user.id, email: user.email, actor: "USER" });
   res.status(201).json({ token, actor: "USER", id: user.id, email: user.email, name: user.fullName });
+});
+
+// POST /api/auth/user/verify-otp  (mock — any 6-digit code marks user as verified)
+router.post("/user/verify-otp", async (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) {
+    res.status(400).json({ error: "email and otp are required" });
+    return;
+  }
+  if (!/^\d{6}$/.test(String(otp))) {
+    res.status(400).json({ error: "OTP must be exactly 6 digits" });
+    return;
+  }
+
+  const [user] = await customersDb.select({ id: users.id }).from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  await customersDb.update(users).set({ isVerified: true }).where(eq(users.id, user.id));
+  res.json({ success: true, message: "Email verified successfully" });
 });
 
 // POST /api/auth/user/login
@@ -82,23 +133,39 @@ router.post("/merchant/register", async (req, res) => {
     return;
   }
 
-  const existing = await merchantsDb.select({ id: merchants.id }).from(merchants).where(eq(merchants.email, email.toLowerCase())).limit(1);
-  if (existing.length) {
-    res.status(409).json({ error: "Email already registered" });
+  const existingMerchant = await merchantsDb.select({ id: merchants.id }).from(merchants).where(
+    or(eq(merchants.email, email.toLowerCase()), eq(merchants.phone, phone))
+  ).limit(1);
+
+  if (existingMerchant.length) {
+    res.status(409).json({ error: "Email or phone already registered" });
     return;
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const [merchant] = await merchantsDb.insert(merchants).values({
-    businessName,
-    ownerName,
-    email: email.toLowerCase(),
-    phone,
-    passwordHash,
-    commercialRegNo,
-    commercialRegDocUrl,
-    commercialRegExpiry,
-  }).returning();
+
+  let merchant: typeof merchants.$inferSelect;
+  try {
+    const result = await merchantsDb.insert(merchants).values({
+      businessName,
+      ownerName,
+      email: email.toLowerCase(),
+      phone,
+      passwordHash,
+      commercialRegNo,
+      commercialRegDocUrl,
+      commercialRegExpiry,
+    }).returning();
+    merchant = result[0];
+  } catch (err) {
+    if (isPgUniqueViolation(err)) {
+      res.status(409).json({ error: "Email or phone already registered" });
+    } else {
+      console.error("Merchant register insert error:", (err as any)?.message, (err as any)?.cause?.message);
+      res.status(500).json({ error: "Registration failed" });
+    }
+    return;
+  }
 
   await writeAuditLog({
     tableName: "merchants",

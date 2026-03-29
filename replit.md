@@ -228,6 +228,44 @@ darbby-monorepo/
 - `/merchant/settings` — **MerchantSettings**: Profile edit form + auto-negotiator quick link
 - `/merchant/auto-negotiator` — **AutoNegotiatorSettings**: Min/max discount, product selection
 
+## DINA — Darbby Intelligent Negotiation Agent
+
+Full negotiation engine across 5 tested scenarios (S10-S13), constraints (S01-S04), and trigger evaluation (S05-S09).
+
+### DINA Constraints API (`POST/GET /api/dina/constraints`)
+- Creates constraints with auto-calculated `max_rounds`
+- Validates min < max and step ≤ range
+- Detects expired constraints (S04)
+- Sends merchant notification on CANCELLED sessions
+
+### DINA Trigger Evaluation (`POST /api/dina/session/trigger`)
+- Checks: `acceptOffers`, `routeWithinRadius`, `branchOpen` (working_hours JSONB), `interestMatch`, `hasConstraint`
+- Logs CANCELLED session with `trigger_checks` JSONB on any failed check
+- `dinaSkipReasonEnum`: NO_ACTIVE_TRIP | ROUTE_TOO_FAR | CUSTOMER_NO_OFFERS | INTEREST_MISMATCH | BRANCH_CLOSED | NO_POLICY | SUBSCRIPTION_EXPIRED
+
+### DINA Negotiation Engine (`/api/dina/negotiate/*`)
+- `POST /api/dina/negotiate/start` — Opens ACTIVE session, DINA sends first offer at minDiscountPct
+- `POST /api/dina/negotiate/:sessionId/respond` — Customer responds: ACCEPT / REJECT / COUNTER_OFFER
+- `GET /api/dina/negotiate/:sessionId` — Get session + all rounds
+
+**Autonomy Levels:**
+- `LEVEL_1`: Customer accept → HITL request created, merchant must approve within timeout
+- `LEVEL_2`: Customer accept → DEAL_CLOSED immediately
+
+**Outcomes:**
+- `DEAL_CLOSED` — Agreement reached
+- `REJECTED_BY_CUSTOMER` — Customer rejected all rounds (maxRounds reached) → merchant notified
+- `PENDING_HITL_APPROVAL` — Level 1: waiting for merchant approval
+- `DINA_COUNTER_OFFERED` — Customer counter > max → DINA offers at max
+- `NEGOTIATING` — Round ongoing
+
+### Auth Endpoints (complete)
+- `POST /api/auth/user/register` — Register with email/phone uniqueness check + `23505` error handling
+- `POST /api/auth/user/verify-otp` — Mock OTP: any 6-digit code → marks user as `is_verified=true`
+- `POST /api/auth/user/login` — JWT login
+- `POST /api/auth/merchant/register` — Merchant registration with phone+email uniqueness check
+- `POST /api/auth/merchant/login` — Merchant JWT login
+
 ## Critical Notes
 
 - **fuelType enum** (PostgreSQL): `PETROL_91`, `PETROL_95`, `DIESEL`, `ELECTRIC`, `HYBRID` — NOT `PETROL`

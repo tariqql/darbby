@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { notificationsDb, notifications } from "@workspace/db";
+import { db, notifications } from "@workspace/db"
 import { eq, and, sql } from "drizzle-orm";
 import { authenticate, JwtPayload } from "../lib/auth.js";
 
@@ -23,7 +23,7 @@ router.get("/", async (req, res) => {
     conditions.push(eq(notifications.isRead, false));
   }
 
-  const list = await notificationsDb
+  const list = await db
     .select()
     .from(notifications)
     .where(and(...conditions))
@@ -38,7 +38,7 @@ router.post("/:id/read", async (req, res) => {
   const { id: recipientId, actor } = auth(req);
   const { id } = req.params;
 
-  await notificationsDb
+  await db
     .update(notifications)
     .set({ isRead: true, readAt: new Date() })
     .where(

@@ -9,9 +9,7 @@
  * 5. Propose a counter-price within [min_discount, max_discount] range
  */
 
-import { dinaDb, autoNegotiatorSettings, autoNegotiatorProducts } from "@workspace/db";
-import { ordersDb, negotiations, offers } from "@workspace/db";
-import { customersDb, users } from "@workspace/db";
+import { db, autoNegotiatorSettings, autoNegotiatorProducts, negotiations, offers, users } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { writeAuditLog } from "./auditLog.js";
 
@@ -25,7 +23,7 @@ interface AutoNegContext {
 }
 
 export async function runAutoNegotiator(ctx: AutoNegContext): Promise<boolean> {
-  const [settings] = await dinaDb
+  const [settings] = await db
     .select()
     .from(autoNegotiatorSettings)
     .where(and(eq(autoNegotiatorSettings.merchantId, ctx.merchantId), eq(autoNegotiatorSettings.isEnabled, true)))
@@ -34,9 +32,8 @@ export async function runAutoNegotiator(ctx: AutoNegContext): Promise<boolean> {
   if (!settings) return false;
 
   // Get user price sensitivity
-  const userRows = await customersDb.execute<any>(sql`SELECT price_sensitivity FROM users WHERE id = ${ctx.userId}::uuid LIMIT 1`);
-  const user = (Array.isArray(userRows) ? userRows : (userRows as any).rows ?? [])[0];
-  const priceSensitivity = parseFloat(user?.price_sensitivity || "0.50");
+  const [user] = await db.select({ priceSensitivity: users.priceSensitivity }).from(users).where(eq(users.id, ctx.userId)).limit(1);
+  const priceSensitivity = parseFloat(user?.priceSensitivity || "0.50");
 
   // Get purpose rules
   const purposeRules = (settings.purposeRules as any) || {};
@@ -47,7 +44,7 @@ export async function runAutoNegotiator(ctx: AutoNegContext): Promise<boolean> {
   if (purposeRule.response_delay_min) delay = purposeRule.response_delay_min;
 
   // Get negotiatable products
-  const prodRules = await dinaDb
+  const prodRules = await db
     .select()
     .from(autoNegotiatorProducts)
     .where(eq(autoNegotiatorProducts.negotiatorId, settings.id));
@@ -73,7 +70,7 @@ export async function runAutoNegotiator(ctx: AutoNegContext): Promise<boolean> {
 
   if (discountPct >= effectiveMin && discountPct <= maxDiscount) {
     // Auto-accept
-    await ordersDb.update(offers).set({
+    await db.update(offers).set({
       status: "ACCEPTED",
       finalPrice: ctx.proposedPrice.toString(),
       respondedAt: new Date(),
@@ -100,7 +97,7 @@ export async function runAutoNegotiator(ctx: AutoNegContext): Promise<boolean> {
   const counterPrice = ctx.originalPrice * (1 - midDiscountPct / 100);
 
   // Schedule delayed response (simplified: insert immediately with isAuto=true)
-  await ordersDb.insert(negotiations).values({
+  await db.insert(negotiations).values({
     offerId: ctx.offerId,
     senderType: "MERCHANT",
     proposedPrice: counterPrice.toFixed(2),

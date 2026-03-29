@@ -1,4 +1,5 @@
-import { operationsDb, systemOperationsLog } from "@workspace/db";
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
 
 interface AuditLogEntry {
   tableName: string;
@@ -16,18 +17,27 @@ interface AuditLogEntry {
 
 export async function writeAuditLog(entry: AuditLogEntry): Promise<void> {
   try {
-    await operationsDb.insert(systemOperationsLog).values({
-      actorType: entry.actorType,
-      actorId: entry.actorId ?? null,
-      operationType: entry.operation,
-      targetEntity: entry.tableName,
-      targetId: entry.recordId,
-      oldValues: entry.oldValues ?? null,
-      newValues: entry.newValues ?? null,
-      metadata: entry.changedFields ? { changedFields: entry.changedFields, reason: entry.reason } : null,
-      ipAddress: entry.ipAddress ?? null,
-      userAgent: entry.userAgent ?? null,
-    });
+    await db.execute(sql`
+      INSERT INTO system_operations_log (
+        id, table_name, record_id, operation, actor_type, actor_id,
+        old_values, new_values, changed_fields, reason,
+        ip_address, user_agent, performed_at
+      ) VALUES (
+        gen_random_uuid(),
+        ${entry.tableName},
+        ${entry.recordId}::uuid,
+        ${entry.operation},
+        ${entry.actorType},
+        ${entry.actorId ?? null}::uuid,
+        ${entry.oldValues ? JSON.stringify(entry.oldValues) : null}::jsonb,
+        ${entry.newValues ? JSON.stringify(entry.newValues) : null}::jsonb,
+        ${entry.changedFields ?? null},
+        ${entry.reason ?? null},
+        ${entry.ipAddress ?? null},
+        ${entry.userAgent ?? null},
+        NOW()
+      )
+    `);
   } catch {
   }
 }

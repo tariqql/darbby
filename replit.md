@@ -18,26 +18,49 @@ Smart travel platform connecting travelers (customers) with merchants (fuel stat
 - **Auth**: JWT (jsonwebtoken + bcryptjs)
 - **Frontends**: React + Vite × 2 — `artifacts/client-app` (travelers) + `artifacts/merchant-portal` (merchants)
 
-## Database Architecture (v3)
+## Database Architecture (v4 — DINA Integrated)
 
-17 tables + PostGIS geographic support:
+**Single PostgreSQL database** (`darbby`) — 31 tables + PostGIS
+
+### Core Darbby Tables (17)
 1. **users** — Customer accounts with price_sensitivity score
-2. **merchants** — Merchant accounts (PENDING → APPROVED flow)
+2. **merchants** — Merchant accounts (PENDING → APPROVED, plans: FREE/BASIC/PRO/PREMIUM)
 3. **merchant_branches** — Geographic branches with PostGIS location, service radius
 4. **vehicle_profiles** — Customer vehicles (fuel type for targeted offers)
-5. **trips** — Customer journeys with PostGIS route geometry + trip_purpose
-6. **products** — Merchant product catalog
-7. **offers** — Offers sent by merchants to trip travelers
-8. **offer_items** — Individual products in an offer
-9. **negotiations** — Price negotiation rounds (USER/MERCHANT/SYSTEM sender)
-10. **auto_negotiator_settings** — Per-merchant auto-negotiator config
-11. **auto_negotiator_products** — Min/max discount per product
-12. **subscriptions** — Merchant subscription records
-13. **transactions** — Financial transactions when offer accepted
-14. **commission_ledger** — Platform commission tracking (1% PREMIUM / 2% FREE)
-15. **system_operations_log** — Full Audit Trail (partitioned by month, JSONB old/new values)
-16. **notifications** — Push notification feed for users and merchants
-17. **operations** — Lightweight operation log
+5. **trips** — Customer journeys with PostGIS route geometry + `accept_offers` flag
+6. **product_categories** — Categories for products (supports DINA trip interests)
+7. **products** — Merchant product catalog
+8. **offers** — Offers sent by merchants to trip travelers
+9. **offer_items** — Individual products in an offer
+10. **negotiations** — Price negotiation rounds (USER/MERCHANT/SYSTEM sender)
+11. **auto_negotiator_settings** — Legacy auto-negotiator config (superseded by DINA)
+12. **auto_negotiator_products** — Legacy min/max discount (superseded by DINA)
+13. **subscriptions** — Merchant subscription records
+14. **transactions** — Financial transactions when offer accepted
+15. **commission_ledger** — Platform commission tracking (1% PREMIUM / 2% FREE)
+16. **system_operations_log** — Full Audit Trail (partitioned by month, JSONB old/new values)
+17. **notifications** — Push notification feed for users and merchants
+
+### DINA Tables (14) — Darbby Intelligent Negotiation Agent
+- **dina_tenants** — Multi-tenant root (Darbby is default SAAS tenant)
+- **dina_tenant_subscriptions** — Per-tenant billing subscriptions
+- **dina_merchants** — DINA merchant enrollment (links to external_merchant_id)
+- **dina_constraints** — Negotiation boundaries (min/max discount, step, rounds)
+- **dina_constraint_products** — Products linked to negotiation constraints
+- **dina_trip_interests** — What each trip wants (categories/subcategories)
+- **dina_sessions** — Full negotiation session record (trigger_checks JSONB)
+- **dina_rounds** — Each individual negotiation round with decision factors
+- **dina_hitl_requests** — Human-in-the-Loop approvals for Level 1 merchants
+- **dina_barcodes** — QR/Barcode generated after deal closed
+- **dina_barcode_transfers** — Branch transfer tracking
+- **dina_learning_events** — AI learning events from each session
+- **dina_customer_profiles** — Per-customer negotiation behavior profile
+- **dina_merchant_profiles** — Per-merchant performance profile & recommendations
+
+### DINA Integration Map
+- **DINA reads**: trips.route_geom, trips.accept_offers, merchant_branches.location, products, merchants.subscription_plan, users.price_sensitivity
+- **DINA writes**: negotiations (is_auto=TRUE), offers.status, users.price_sensitivity, notifications
+- **DINA NEVER touches**: transactions, commission_ledger, subscriptions, merchant_branches (data)
 
 ## Structure
 

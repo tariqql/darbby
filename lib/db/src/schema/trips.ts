@@ -39,6 +39,7 @@ export const trips = pgTable("trips", {
   arrivalTime: timestamp("arrival_time", { withTimezone: true }),
   status: tripStatusEnum("status").default("ACTIVE"),
   isPublic: boolean("is_public").default(true),
+  acceptOffers: boolean("accept_offers").default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });

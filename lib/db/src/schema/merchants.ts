@@ -22,6 +22,8 @@ export const merchantStatusEnum = pgEnum("merchant_status", [
 
 export const subscriptionPlanEnum = pgEnum("subscription_plan", [
   "FREE",
+  "BASIC",
+  "PRO",
   "PREMIUM",
 ]);
 

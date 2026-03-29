@@ -1,18 +1,18 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
+import { buildDbUrl } from "./dbUrl";
 import { merchants } from "../schema/merchants";
 import { merchantBranches } from "../schema/merchantBranches";
 import { products } from "../schema/products";
+import { productCategories } from "../schema/productCategories";
 import { subscriptions } from "../schema/subscriptions";
+import { autoNegotiatorSettings, autoNegotiatorProducts } from "../schema/autoNegotiator";
 
 const { Pool } = pg;
 
-const url = process.env.DATABASE_MERCHANTS_URL ?? process.env.DATABASE_URL;
-if (!url) throw new Error("DATABASE_MERCHANTS_URL is not set");
-
-export const merchantsPool = new Pool({ connectionString: url });
+export const merchantsPool = new Pool({ connectionString: buildDbUrl("darbby_merchants") });
 export const merchantsDb = drizzle(merchantsPool, {
-  schema: { merchants, merchantBranches, products, subscriptions },
+  schema: { merchants, merchantBranches, products, productCategories, subscriptions, autoNegotiatorSettings, autoNegotiatorProducts },
 });
 
 export type MerchantsDb = typeof merchantsDb;

@@ -9,8 +9,8 @@
  * 5. Propose a counter-price within [min_discount, max_discount] range
  */
 
-import { db, autoNegotiatorSettings, autoNegotiatorProducts, negotiations, offers, users } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { merchantsDb, sharedDb, customersDb, autoNegotiatorSettings, autoNegotiatorProducts, negotiations, offers, users } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { writeAuditLog } from "./auditLog.js";
 
 interface AutoNegContext {
@@ -23,7 +23,7 @@ interface AutoNegContext {
 }
 
 export async function runAutoNegotiator(ctx: AutoNegContext): Promise<boolean> {
-  const [settings] = await db
+  const [settings] = await merchantsDb
     .select()
     .from(autoNegotiatorSettings)
     .where(and(eq(autoNegotiatorSettings.merchantId, ctx.merchantId), eq(autoNegotiatorSettings.isEnabled, true)))
@@ -31,8 +31,8 @@ export async function runAutoNegotiator(ctx: AutoNegContext): Promise<boolean> {
 
   if (!settings) return false;
 
-  // Get user price sensitivity
-  const [user] = await db.select({ priceSensitivity: users.priceSensitivity }).from(users).where(eq(users.id, ctx.userId)).limit(1);
+  // Get user price sensitivity from customersDb
+  const [user] = await customersDb.select({ priceSensitivity: users.priceSensitivity }).from(users).where(eq(users.id, ctx.userId)).limit(1);
   const priceSensitivity = parseFloat(user?.priceSensitivity || "0.50");
 
   // Get purpose rules
@@ -43,8 +43,8 @@ export async function runAutoNegotiator(ctx: AutoNegContext): Promise<boolean> {
   let delay = settings.responseDelayMin || 5;
   if (purposeRule.response_delay_min) delay = purposeRule.response_delay_min;
 
-  // Get negotiatable products
-  const prodRules = await db
+  // Get negotiatable products from merchantsDb
+  const prodRules = await merchantsDb
     .select()
     .from(autoNegotiatorProducts)
     .where(eq(autoNegotiatorProducts.negotiatorId, settings.id));
@@ -52,7 +52,6 @@ export async function runAutoNegotiator(ctx: AutoNegContext): Promise<boolean> {
   if (!prodRules.length) return false;
 
   // Calculate acceptable counter price
-  // Base: use the first product's discount range (simplification for multi-product offers)
   const rule = prodRules[0];
   let minDiscount = parseFloat(rule.minDiscountPct);
   let maxDiscount = parseFloat(rule.maxDiscountPct);
@@ -69,8 +68,8 @@ export async function runAutoNegotiator(ctx: AutoNegContext): Promise<boolean> {
   const discountPct = ((ctx.originalPrice - ctx.proposedPrice) / ctx.originalPrice) * 100;
 
   if (discountPct >= effectiveMin && discountPct <= maxDiscount) {
-    // Auto-accept
-    await db.update(offers).set({
+    // Auto-accept via sharedDb
+    await sharedDb.update(offers).set({
       status: "ACCEPTED",
       finalPrice: ctx.proposedPrice.toString(),
       respondedAt: new Date(),
@@ -92,12 +91,11 @@ export async function runAutoNegotiator(ctx: AutoNegContext): Promise<boolean> {
     return true;
   }
 
-  // Propose a counter between min and max
+  // Propose a counter between min and max via sharedDb
   const midDiscountPct = (effectiveMin + maxDiscount) / 2;
   const counterPrice = ctx.originalPrice * (1 - midDiscountPct / 100);
 
-  // Schedule delayed response (simplified: insert immediately with isAuto=true)
-  await db.insert(negotiations).values({
+  await sharedDb.insert(negotiations).values({
     offerId: ctx.offerId,
     senderType: "MERCHANT",
     proposedPrice: counterPrice.toFixed(2),

@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, offers, offerItems, negotiations, transactions, commissionLedger, products, users } from "@workspace/db"
-import { eq, and, sql } from "drizzle-orm";
+import { sharedDb, merchantsDb, customersDb, offers, offerItems, negotiations, transactions, commissionLedger, products, users } from "@workspace/db";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { authenticate, JwtPayload } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/auditLog.js";
 
@@ -15,29 +15,35 @@ function dbRows<T = any>(result: any): T[] {
   return [] as T[];
 }
 
+// Cross-DB: offer_items in sharedDb, products in merchantsDb
 async function getOfferWithDetails(offerId: string) {
-  const [offer] = await db.select().from(offers).where(eq(offers.id, offerId)).limit(1);
+  const [offer] = await sharedDb.select().from(offers).where(eq(offers.id, offerId)).limit(1);
   if (!offer) return null;
 
-  const itemsRaw = await db.execute<any>(sql`
-    SELECT oi.*, p.name as product_name, oi.unit_price as "unitPrice", oi.quantity as quantity
-    FROM offer_items oi
-    JOIN products p ON p.id = oi.product_id
-    WHERE oi.offer_id = ${offerId}::uuid
-  `);
+  // Get offer items from sharedDb
+  const rawItems = await sharedDb.select().from(offerItems).where(eq(offerItems.offerId, offerId));
 
-  const items = dbRows(itemsRaw).map((r: any) => ({
+  // Get product names from merchantsDb
+  let productMap: Record<string, string> = {};
+  if (rawItems.length) {
+    const productIds = rawItems.map(i => i.productId);
+    const prods = await merchantsDb.select({ id: products.id, name: products.name })
+      .from(products)
+      .where(inArray(products.id, productIds));
+    for (const p of prods) productMap[p.id] = p.name;
+  }
+
+  const items = rawItems.map(r => ({
     id: r.id,
-    offerId: r.offer_id,
-    productId: r.product_id,
-    productName: r.product_name || r.name,
+    offerId: r.offerId,
+    productId: r.productId,
+    productName: productMap[r.productId] ?? "Unknown",
     quantity: Number(r.quantity),
-    unitPrice: parseFloat(r.unit_price || r.unitPrice || 0),
-    discountPct: parseFloat(r.discount_pct || 0),
-    lineTotal: parseFloat(r.line_total || (r.unit_price * r.quantity) || 0),
+    unitPrice: parseFloat(r.unitPrice?.toString() ?? "0"),
+    negotiatedPrice: r.negotiatedPrice ? parseFloat(r.negotiatedPrice.toString()) : null,
   }));
 
-  const negs = await db.select().from(negotiations).where(eq(negotiations.offerId, offerId));
+  const negs = await sharedDb.select().from(negotiations).where(eq(negotiations.offerId, offerId));
 
   return { ...offer, items, negotiations: negs };
 }
@@ -55,7 +61,7 @@ router.post("/:id/accept", async (req, res) => {
   if (actor !== "USER") { res.status(403).json({ error: "Forbidden" }); return; }
   const { id } = req.params;
 
-  const [offer] = await db.select().from(offers).where(eq(offers.id, id)).limit(1);
+  const [offer] = await sharedDb.select().from(offers).where(eq(offers.id, id)).limit(1);
   if (!offer) { res.status(404).json({ error: "Not found" }); return; }
 
   if (!["SENT", "VIEWED", "NEGOTIATING"].includes(offer.status!)) {
@@ -66,23 +72,23 @@ router.post("/:id/accept", async (req, res) => {
   const oldStatus = offer.status;
   const finalPrice = offer.finalPrice || offer.totalPrice;
 
-  const [updatedOffer] = await db.update(offers).set({
+  const [updatedOffer] = await sharedDb.update(offers).set({
     status: "ACCEPTED",
     finalPrice,
     respondedAt: new Date(),
     updatedAt: new Date(),
   }).where(eq(offers.id, id)).returning();
 
-  // Determine commission rate based on merchant subscription
-  const merchantRaw = await db.execute<any>(sql`SELECT subscription_plan FROM merchants WHERE id = ${offer.merchantId}::uuid LIMIT 1`);
-  const merchant = (Array.isArray(merchantRaw) ? merchantRaw : (merchantRaw?.rows ?? []))[0];
+  // Get merchant subscription plan from merchantsDb
+  const merchantRaw = await merchantsDb.execute<any>(sql`SELECT subscription_plan FROM merchants WHERE id = ${offer.merchantId}::uuid LIMIT 1`);
+  const merchant = dbRows<any>(merchantRaw)[0];
   const commissionPct = merchant?.subscription_plan === "PREMIUM" ? 1.0 : 2.0;
   const grossAmt = parseFloat(finalPrice!.toString());
   const commissionAmt = parseFloat((grossAmt * commissionPct / 100).toFixed(2));
   const netAmt = parseFloat((grossAmt - commissionAmt).toFixed(2));
 
-  // Create transaction
-  const [txn] = await db.insert(transactions).values({
+  // Create transaction in sharedDb
+  const [txn] = await sharedDb.insert(transactions).values({
     offerId: id,
     merchantId: offer.merchantId,
     grossAmount: grossAmt.toString(),
@@ -93,8 +99,8 @@ router.post("/:id/accept", async (req, res) => {
     settledAt: new Date(),
   }).returning();
 
-  // Create commission ledger entry
-  await db.insert(commissionLedger).values({
+  // Create commission ledger entry in sharedDb
+  await sharedDb.insert(commissionLedger).values({
     offerId: id,
     transactionId: txn.id,
     merchantId: offer.merchantId,
@@ -104,26 +110,30 @@ router.post("/:id/accept", async (req, res) => {
     ledgerStatus: "PENDING",
   });
 
-  // Update user price_sensitivity
-  await db.execute(sql`
-    UPDATE users SET price_sensitivity = (
-      SELECT COALESCE(AVG(
-        CASE
-          WHEN n.proposed_price < oi.unit_price * 0.95 THEN 1.0
-          WHEN n.proposed_price < oi.unit_price * 0.98 THEN 0.6
-          ELSE 0.2
-        END
-      ), 0.50)
-      FROM negotiations n
-      JOIN offers o ON n.offer_id = o.id
-      JOIN offer_items oi ON oi.offer_id = o.id
-      JOIN trips t ON o.trip_id = t.id
-      WHERE t.user_id = ${userId}::uuid
-        AND n.sender_type = 'USER'
-        AND n.created_at > NOW() - INTERVAL '90 days'
-    )
-    WHERE id = ${userId}::uuid
+  // Update user price_sensitivity in customersDb using cross-DB data from sharedDb
+  // First compute the new sensitivity from sharedDb
+  const sensitivityRaw = await sharedDb.execute<any>(sql`
+    SELECT COALESCE(AVG(
+      CASE
+        WHEN n.proposed_price < oi.unit_price * 0.95 THEN 1.0
+        WHEN n.proposed_price < oi.unit_price * 0.98 THEN 0.6
+        ELSE 0.2
+      END
+    ), 0.50) AS sensitivity
+    FROM negotiations n
+    JOIN offers o ON n.offer_id = o.id
+    JOIN offer_items oi ON oi.offer_id = o.id
+    JOIN trips t ON o.trip_id = t.id
+    WHERE t.user_id = ${userId}::uuid
+      AND n.sender_type = 'USER'
+      AND n.created_at > NOW() - INTERVAL '90 days'
   `);
+  const newSensitivity = dbRows<any>(sensitivityRaw)[0]?.sensitivity ?? "0.50";
+
+  // Update in customersDb
+  await customersDb.update(users)
+    .set({ priceSensitivity: newSensitivity.toString() })
+    .where(eq(users.id, userId));
 
   await writeAuditLog({
     tableName: "offers", recordId: id, operation: "STATUS_CHANGE", actorType: "USER", actorId: userId,
@@ -140,10 +150,10 @@ router.post("/:id/reject", async (req, res) => {
   if (actor !== "USER") { res.status(403).json({ error: "Forbidden" }); return; }
   const { id } = req.params;
 
-  const [offer] = await db.select().from(offers).where(eq(offers.id, id)).limit(1);
+  const [offer] = await sharedDb.select().from(offers).where(eq(offers.id, id)).limit(1);
   if (!offer) { res.status(404).json({ error: "Not found" }); return; }
 
-  await db.update(offers).set({ status: "REJECTED", respondedAt: new Date(), updatedAt: new Date() }).where(eq(offers.id, id));
+  await sharedDb.update(offers).set({ status: "REJECTED", respondedAt: new Date(), updatedAt: new Date() }).where(eq(offers.id, id));
 
   await writeAuditLog({ tableName: "offers", recordId: id, operation: "STATUS_CHANGE", actorType: "USER", actorId: userId, oldValues: { status: offer.status }, newValues: { status: "REJECTED" }, changedFields: ["status"] });
 
@@ -160,14 +170,14 @@ router.post("/:id/counter", async (req, res) => {
 
   if (!proposedPrice) { res.status(400).json({ error: "proposedPrice is required" }); return; }
 
-  const [offer] = await db.select().from(offers).where(eq(offers.id, id)).limit(1);
+  const [offer] = await sharedDb.select().from(offers).where(eq(offers.id, id)).limit(1);
   if (!offer) { res.status(404).json({ error: "Not found" }); return; }
 
-  const [user] = await db.select({ priceSensitivity: users.priceSensitivity }).from(users).where(eq(users.id, userId)).limit(1);
+  const [user] = await customersDb.select({ priceSensitivity: users.priceSensitivity }).from(users).where(eq(users.id, userId)).limit(1);
 
-  await db.update(offers).set({ status: "NEGOTIATING", updatedAt: new Date() }).where(eq(offers.id, id));
+  await sharedDb.update(offers).set({ status: "NEGOTIATING", updatedAt: new Date() }).where(eq(offers.id, id));
 
-  const [neg] = await db.insert(negotiations).values({
+  const [neg] = await sharedDb.insert(negotiations).values({
     offerId: id,
     senderType: "USER",
     proposedPrice: proposedPrice.toString(),

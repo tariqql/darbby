@@ -1,15 +1,43 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import { autoNegotiatorSettings, autoNegotiatorProducts } from "../schema/autoNegotiator";
+import { buildDbUrl } from "./dbUrl";
+import {
+  dinaTenants,
+  dinaTenantSubscriptions,
+  dinaMerchants,
+  dinaConstraints,
+  dinaConstraintProducts,
+  dinaTripInterests,
+  dinaSessions,
+  dinaRounds,
+  dinaHitlRequests,
+  dinaBarcodes,
+  dinaBarcodeTransfers,
+  dinaLearningEvents,
+  dinaCustomerProfiles,
+  dinaMerchantProfiles,
+} from "../schema/dina";
 
 const { Pool } = pg;
 
-const url = process.env.DATABASE_DINA_URL ?? process.env.DATABASE_URL;
-if (!url) throw new Error("DATABASE_DINA_URL is not set");
-
-export const dinaPool = new Pool({ connectionString: url });
+export const dinaPool = new Pool({ connectionString: buildDbUrl("darbby_dina") });
 export const dinaDb = drizzle(dinaPool, {
-  schema: { autoNegotiatorSettings, autoNegotiatorProducts },
+  schema: {
+    dinaTenants,
+    dinaTenantSubscriptions,
+    dinaMerchants,
+    dinaConstraints,
+    dinaConstraintProducts,
+    dinaTripInterests,
+    dinaSessions,
+    dinaRounds,
+    dinaHitlRequests,
+    dinaBarcodes,
+    dinaBarcodeTransfers,
+    dinaLearningEvents,
+    dinaCustomerProfiles,
+    dinaMerchantProfiles,
+  },
 });
 
 export type DinaDb = typeof dinaDb;

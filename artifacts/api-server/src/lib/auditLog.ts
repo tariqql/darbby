@@ -1,4 +1,4 @@
-import { db } from "@workspace/db";
+import { sharedDb } from "@workspace/db";
 import { sql } from "drizzle-orm";
 
 interface AuditLogEntry {
@@ -17,7 +17,7 @@ interface AuditLogEntry {
 
 export async function writeAuditLog(entry: AuditLogEntry): Promise<void> {
   try {
-    await db.execute(sql`
+    await sharedDb.execute(sql`
       INSERT INTO system_operations_log (
         id, table_name, record_id, operation, actor_type, actor_id,
         old_values, new_values, changed_fields, reason,

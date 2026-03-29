@@ -18,37 +18,49 @@ Smart travel platform connecting travelers (customers) with merchants (fuel stat
 - **Auth**: JWT (jsonwebtoken + bcryptjs)
 - **Frontends**: React + Vite × 2 — `artifacts/client-app` (travelers) + `artifacts/merchant-portal` (merchants)
 
-## Database Architecture (v4 — DINA Integrated)
+## Database Architecture (v5 — 5-Database Split)
 
-**Single PostgreSQL database** (`darbby`) — 31 tables + PostGIS
+**5 separate PostgreSQL databases** on same cluster (host: `helium`). No cross-DB FK constraints — UUIDs used as plain columns, joins handled at application level.
 
-### Core Darbby Tables (17)
-1. **users** — Customer accounts with price_sensitivity score
-2. **merchants** — Merchant accounts (PENDING → APPROVED, plans: FREE/BASIC/PRO/PREMIUM)
-3. **merchant_branches** — Geographic branches with PostGIS location, service radius
-4. **vehicle_profiles** — Customer vehicles (fuel type for targeted offers)
-5. **trips** — Customer journeys with PostGIS route geometry + `accept_offers` flag
-6. **product_categories** — Categories for products (supports DINA trip interests)
-7. **products** — Merchant product catalog
-8. **offers** — Offers sent by merchants to trip travelers
-9. **offer_items** — Individual products in an offer
-10. **negotiations** — Price negotiation rounds (USER/MERCHANT/SYSTEM sender)
-11. **auto_negotiator_settings** — Legacy auto-negotiator config (superseded by DINA)
-12. **auto_negotiator_products** — Legacy min/max discount (superseded by DINA)
-13. **subscriptions** — Merchant subscription records
-14. **transactions** — Financial transactions when offer accepted
-15. **commission_ledger** — Platform commission tracking (1% PREMIUM / 2% FREE)
-16. **system_operations_log** — Full Audit Trail (partitioned by month, JSONB old/new values)
-17. **notifications** — Push notification feed for users and merchants
+### 1. darbby_customers
+- **users** — Customer accounts with price_sensitivity score
+- **vehicle_profiles** — Customer vehicles (fuel type for targeted offers)
+- Connection: `customersDb` via `buildDbUrl("darbby_customers")`
 
-### DINA Tables (14) — Darbby Intelligent Negotiation Agent
+### 2. darbby_merchants (PostGIS enabled)
+- **merchants** — Merchant accounts (PENDING → APPROVED, plans: FREE/BASIC/PRO/PREMIUM)
+- **merchant_branches** — Geographic branches with PostGIS location, service radius
+- **products** — Merchant product catalog
+- **product_categories** — Categories for products (supports DINA trip interests)
+- **subscriptions** — Merchant subscription records
+- **auto_negotiator_settings** — Auto-negotiator config per merchant
+- **auto_negotiator_products** — Min/max discount per product
+- Connection: `merchantsDb` via `buildDbUrl("darbby_merchants")`
+
+### 3. darbby_shared (PostGIS enabled)
+- **trips** — Customer journeys with PostGIS route geometry + `accept_offers` flag
+- **offers** — Offers sent by merchants to trip travelers
+- **offer_items** — Individual products in an offer
+- **negotiations** — Price negotiation rounds (USER/MERCHANT/SYSTEM sender)
+- **transactions** — Financial transactions when offer accepted
+- **commission_ledger** — Platform commission tracking (1% PREMIUM / 2% FREE)
+- **notifications** — Push notification feed for users and merchants
+- **system_operations_log** — Full Audit Trail (JSONB old/new values)
+- Connection: `sharedDb` via `buildDbUrl("darbby_shared")`
+
+### 4. darbby_staff
+- **staff_users** — Admin/support staff accounts (roles: SUPER_ADMIN, ADMIN, SUPPORT, FINANCE, MODERATOR)
+- **audit_log** — Staff action audit trail
+- Connection: `staffDb` via `buildDbUrl("darbby_staff")`
+
+### 5. darbby_dina — DINA Engine (Darbby Intelligent Negotiation Agent)
 - **dina_tenants** — Multi-tenant root (Darbby is default SAAS tenant)
 - **dina_tenant_subscriptions** — Per-tenant billing subscriptions
 - **dina_merchants** — DINA merchant enrollment (links to external_merchant_id)
 - **dina_constraints** — Negotiation boundaries (min/max discount, step, rounds)
 - **dina_constraint_products** — Products linked to negotiation constraints
 - **dina_trip_interests** — What each trip wants (categories/subcategories)
-- **dina_sessions** — Full negotiation session record (trigger_checks JSONB)
+- **dina_sessions** — Full negotiation session record
 - **dina_rounds** — Each individual negotiation round with decision factors
 - **dina_hitl_requests** — Human-in-the-Loop approvals for Level 1 merchants
 - **dina_barcodes** — QR/Barcode generated after deal closed
@@ -56,11 +68,13 @@ Smart travel platform connecting travelers (customers) with merchants (fuel stat
 - **dina_learning_events** — AI learning events from each session
 - **dina_customer_profiles** — Per-customer negotiation behavior profile
 - **dina_merchant_profiles** — Per-merchant performance profile & recommendations
+- Connection: `dinaDb` via `buildDbUrl("darbby_dina")`
 
-### DINA Integration Map
-- **DINA reads**: trips.route_geom, trips.accept_offers, merchant_branches.location, products, merchants.subscription_plan, users.price_sensitivity
-- **DINA writes**: negotiations (is_auto=TRUE), offers.status, users.price_sensitivity, notifications
-- **DINA NEVER touches**: transactions, commission_ledger, subscriptions, merchant_branches (data)
+### Cross-DB Query Pattern
+Queries spanning databases are done at application level:
+- Fetch from DB A, extract IDs → query DB B with those IDs (e.g., offer_items + products)
+- For PostGIS cross-DB: fetch geometry as EWKT from one DB, pass as parameter to other DB
+- All data in shared tables (trips, offers, etc.) use UUID references to other DBs (no FK constraints)
 
 ## Structure
 

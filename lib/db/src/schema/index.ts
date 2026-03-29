@@ -12,4 +12,5 @@ export * from "./autoNegotiator";
 export * from "./transactions";
 export * from "./notifications";
 export * from "./operationsLog";
+export * from "./staff";
 export * from "./dina";

@@ -6,8 +6,10 @@ import { Card, CardContent, Button } from "@/components/ui";
 import { Bell, CheckCheck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { arSA } from "date-fns/locale";
+import { useProtectedRoute } from "@/hooks/use-auth";
 
 export function NotificationCenter() {
+  useProtectedRoute();
   const { data: notifications, isLoading } = useListNotifications();
   const markRead = useMarkNotificationRead();
   const queryClient = useQueryClient();

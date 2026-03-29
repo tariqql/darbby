@@ -81,8 +81,9 @@ router.get("/:id", async (req, res) => {
   const { id: userId } = auth(req);
   const { id } = req.params;
 
-  const raw = await sharedDb.execute<any>(sql`SELECT * FROM trips WHERE id = ${id}::uuid AND user_id = ${userId}::uuid LIMIT 1`);
-  const trip = dbRows<any>(raw)[0];
+  const [trip] = await sharedDb.select().from(trips).where(
+    and(eq(trips.id, id), eq(trips.userId, userId))
+  ).limit(1);
   if (!trip) { res.status(404).json({ error: "Trip not found" }); return; }
 
   const tripOffers = await sharedDb.select().from(offers).where(eq(offers.tripId, id));

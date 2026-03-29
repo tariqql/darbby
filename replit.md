@@ -75,6 +75,17 @@ Queries spanning databases are done at application level:
 - Fetch from DB A, extract IDs → query DB B with those IDs (e.g., offer_items + products)
 - For PostGIS cross-DB: fetch geometry as EWKT from one DB, pass as parameter to other DB
 - All data in shared tables (trips, offers, etc.) use UUID references to other DBs (no FK constraints)
+- **IMPORTANT**: For cross-DB product name lookups, use `merchantsPool.query()` directly (not Drizzle `inArray`) — raw pg Pool avoids UUID type handling issues
+
+### Dev Environment Reality (Replit PostgreSQL)
+In Replit's PostgreSQL instance, all 5 logical databases exist as separate PostgreSQL databases under host `helium`:
+- `heliumdb` — Replit default DB, holds a copy of all data from migrations/seeding
+- `darbby_shared` — has trips, offers, offer_items, negotiations (actual live data)
+- `darbby_customers` — has users, vehicle_profiles (actual live data)
+- `darbby_merchants` — has merchants, branches, products (products must be seeded here separately)
+- `darbby_dina` — has all DINA tables (actual live data)
+
+**Gotcha**: The `products` table in `darbby_merchants` starts empty — if seeding only hits `heliumdb`, copy manually: `INSERT INTO products SELECT * FROM heliumdb.products` (connect to each DB separately).
 
 ## Structure
 

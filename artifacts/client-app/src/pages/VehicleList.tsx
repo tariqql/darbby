@@ -6,6 +6,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { Button, Card, CardContent, Badge } from "@/components/ui";
 import { Car, Plus, Trash2, Star, Fuel, Edit3 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useProtectedRoute } from "@/hooks/use-auth";
 
 const FUEL_LABELS: Record<string, string> = {
   PETROL_91: "بنزين 91",
@@ -24,6 +25,7 @@ const VEHICLE_TYPE_ICONS: Record<string, string> = {
 };
 
 export function VehicleList() {
+  useProtectedRoute();
   const [, setLocation] = useLocation();
   const { data: vehicles, isLoading } = useListVehicles();
   const deleteVehicle = useDeleteVehicle();

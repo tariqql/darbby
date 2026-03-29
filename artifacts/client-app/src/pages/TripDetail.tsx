@@ -5,8 +5,10 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, Badge, Button } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
 import { Store, ChevronLeft, Map } from "lucide-react";
+import { useProtectedRoute } from "@/hooks/use-auth";
 
 export function TripDetail() {
+  useProtectedRoute();
   const { id } = useParams();
   const { data: trip, isLoading } = useGetTripById(id!);
 

@@ -6,8 +6,10 @@ import { Button, Card, CardContent, Badge } from "@/components/ui";
 import { MapPin, Plus, Clock, ChevronLeft } from "lucide-react";
 import { format } from "date-fns";
 import { arSA } from "date-fns/locale";
+import { useProtectedRoute } from "@/hooks/use-auth";
 
 export function UserDashboard() {
+  useProtectedRoute();
   const { data: trips, isLoading } = useListMyTrips();
 
   return (

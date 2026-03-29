@@ -1,11 +1,12 @@
 import React from "react";
-import { useAuthStore } from "@/hooks/use-auth";
+import { useAuthStore, useProtectedRoute } from "@/hooks/use-auth";
 import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, Button } from "@/components/ui";
 import { User, Mail, Shield, LogOut } from "lucide-react";
 import { useLocation } from "wouter";
 
 export function UserProfile() {
+  useProtectedRoute();
   const { user, logout } = useAuthStore();
   const [, setLocation] = useLocation();
 
@@ -14,7 +15,8 @@ export function UserProfile() {
     setLocation("/login");
   };
 
-  const initials = user?.email?.charAt(0)?.toUpperCase() || "م";
+  const displayName = user?.name || user?.email?.split("@")[0] || "مستخدم";
+  const initials = displayName.charAt(0).toUpperCase();
 
   return (
     <AppLayout>
@@ -32,7 +34,7 @@ export function UserProfile() {
                 {initials}
               </div>
               <div className="mb-2">
-                <h2 className="text-2xl font-black text-foreground">{user?.email?.split("@")[0]}</h2>
+                <h2 className="text-2xl font-black text-foreground">{displayName}</h2>
                 <p className="text-muted-foreground font-medium">مسافر</p>
               </div>
             </div>

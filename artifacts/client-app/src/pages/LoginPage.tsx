@@ -44,7 +44,7 @@ export function LoginPage() {
           className="w-full max-w-md space-y-8"
         >
           <div className="text-center space-y-2">
-            <img src={`${import.meta.env.BASE_URL}images/logo-mark.png`} alt="Logo" className="w-16 h-16 mx-auto mb-6 rounded-2xl shadow-lg" />
+            <img src={`${import.meta.env.BASE_URL}images/logo-mark.svg`} alt="Logo" className="w-16 h-16 mx-auto mb-6 rounded-2xl shadow-lg" />
             <h1 className="text-4xl font-black text-primary tracking-tight">أهلاً بك في دربي</h1>
             <p className="text-muted-foreground font-medium text-lg">منصة السفر الذكية للمسافرين</p>
           </div>
@@ -102,7 +102,7 @@ export function LoginPage() {
 
       <div className="hidden lg:block w-1/2 relative bg-primary overflow-hidden">
         <img
-          src={`${import.meta.env.BASE_URL}images/hero-bg.png`}
+          src={`${import.meta.env.BASE_URL}images/hero-bg.svg`}
           alt="Hero"
           className="absolute inset-0 w-full h-full object-cover opacity-80"
         />

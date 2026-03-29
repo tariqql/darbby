@@ -4,8 +4,10 @@ import { useCreateTrip, useListVehicles } from "@workspace/api-client-react";
 import { AppLayout } from "@/components/AppLayout";
 import { Button, Card, CardContent, Input, Label } from "@/components/ui";
 import { MapPin, Navigation } from "lucide-react";
+import { useProtectedRoute } from "@/hooks/use-auth";
 
 export function CreateTrip() {
+  useProtectedRoute();
   const [, setLocation] = useLocation();
   const createTrip = useCreateTrip();
   const { data: vehicles } = useListVehicles();

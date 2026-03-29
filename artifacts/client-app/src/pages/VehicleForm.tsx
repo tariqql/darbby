@@ -7,6 +7,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { Button, Card, CardContent } from "@/components/ui";
 import { ArrowRight, Car } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useProtectedRoute } from "@/hooks/use-auth";
 
 type VehicleFormData = {
   nickname: string;
@@ -37,6 +38,7 @@ const VEHICLE_TYPE_OPTIONS = [
 ];
 
 export function VehicleForm() {
+  useProtectedRoute();
   const { id } = useParams<{ id?: string }>();
   const isEdit = !!id;
   const [, setLocation] = useLocation();

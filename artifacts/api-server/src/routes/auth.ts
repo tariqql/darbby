@@ -69,7 +69,7 @@ router.post("/user/register", async (req, res) => {
     ipAddress: req.ip,
   });
 
-  const token = signToken({ id: user.id, email: user.email, actor: "USER" });
+  const token = signToken({ id: user.id, email: user.email, actor: "USER", name: user.fullName });
   res.status(201).json({ token, actor: "USER", id: user.id, email: user.email, name: user.fullName });
 });
 
@@ -117,7 +117,7 @@ router.post("/user/login", async (req, res) => {
 
   await customersDb.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
 
-  const token = signToken({ id: user.id, email: user.email, actor: "USER" });
+  const token = signToken({ id: user.id, email: user.email, actor: "USER", name: user.fullName });
   res.json({ token, actor: "USER", id: user.id, email: user.email, name: user.fullName });
 });
 
@@ -177,7 +177,7 @@ router.post("/merchant/register", async (req, res) => {
     ipAddress: req.ip,
   });
 
-  const token = signToken({ id: merchant.id, email: merchant.email, actor: "MERCHANT" });
+  const token = signToken({ id: merchant.id, email: merchant.email, actor: "MERCHANT", name: merchant.businessName });
   res.status(201).json({ token, actor: "MERCHANT", id: merchant.id, email: merchant.email, name: merchant.businessName });
 });
 
@@ -203,7 +203,7 @@ router.post("/merchant/login", async (req, res) => {
 
   await merchantsDb.update(merchants).set({ updatedAt: new Date() }).where(eq(merchants.id, merchant.id));
 
-  const token = signToken({ id: merchant.id, email: merchant.email, actor: "MERCHANT" });
+  const token = signToken({ id: merchant.id, email: merchant.email, actor: "MERCHANT", name: merchant.businessName });
   res.json({ token, actor: "MERCHANT", id: merchant.id, email: merchant.email, name: merchant.businessName });
 });
 

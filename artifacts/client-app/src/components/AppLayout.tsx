@@ -29,7 +29,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row" dir="rtl">
       <aside className="hidden md:flex w-72 flex-col bg-card border-e border-border z-20 shadow-xl shadow-black/5 sticky top-0 h-screen overflow-y-auto">
         <div className="p-8 flex items-center gap-4 border-b border-border/50">
-          <img src={`${import.meta.env.BASE_URL}images/logo-mark.png`} alt="Darbby" className="w-10 h-10 rounded-xl shadow-sm" />
+          <img src={`${import.meta.env.BASE_URL}images/logo-mark.svg`} alt="Darbby" className="w-10 h-10 rounded-xl shadow-sm" />
           <div>
             <h1 className="text-2xl font-black text-primary tracking-tight">دربي</h1>
             <p className="text-xs text-muted-foreground font-medium">منصة المسافر</p>
@@ -71,7 +71,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       <main className="flex-1 flex flex-col min-w-0 pb-20 md:pb-0 overflow-x-hidden">
         <header className="md:hidden flex items-center justify-between p-4 bg-card border-b border-border sticky top-0 z-20 shadow-sm">
           <div className="flex items-center gap-3">
-            <img src={`${import.meta.env.BASE_URL}images/logo-mark.png`} alt="Darbby" className="w-8 h-8 rounded-lg shadow-sm" />
+            <img src={`${import.meta.env.BASE_URL}images/logo-mark.svg`} alt="Darbby" className="w-8 h-8 rounded-lg shadow-sm" />
             <h1 className="text-xl font-black text-primary">دربي</h1>
           </div>
           <button onClick={handleLogout} className="p-2 text-destructive bg-destructive/10 rounded-lg">

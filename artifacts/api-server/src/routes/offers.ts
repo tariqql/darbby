@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { sharedDb, merchantsDb, customersDb, offers, offerItems, negotiations, transactions, commissionLedger, products, users } from "@workspace/db";
+import { sharedDb, merchantsDb, merchantsPool, customersDb, offers, offerItems, negotiations, transactions, commissionLedger, products, users } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { authenticate, JwtPayload } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/auditLog.js";
@@ -23,14 +23,20 @@ async function getOfferWithDetails(offerId: string) {
   // Get offer items from sharedDb
   const rawItems = await sharedDb.select().from(offerItems).where(eq(offerItems.offerId, offerId));
 
-  // Get product names from merchantsDb
+  // Get product names from merchantsDb pool (cross-DB lookup)
   let productMap: Record<string, string> = {};
   if (rawItems.length) {
-    const productIds = rawItems.map(i => i.productId);
-    const prods = await merchantsDb.select({ id: products.id, name: products.name })
-      .from(products)
-      .where(inArray(products.id, productIds));
-    for (const p of prods) productMap[p.id] = p.name;
+    try {
+      const productIds = rawItems.map(i => i.productId);
+      const placeholders = productIds.map((_, i) => `$${i + 1}`).join(",");
+      const r = await merchantsPool.query<{ id: string; name: string }>(
+        `SELECT id::text, name FROM products WHERE id::text IN (${placeholders})`,
+        productIds
+      );
+      for (const p of r.rows) productMap[p.id] = p.name;
+    } catch (e: any) {
+      console.error("[offers] product lookup error:", e.message);
+    }
   }
 
   const items = rawItems.map(r => ({

@@ -5,8 +5,10 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent, Badge, Button, Dialog, DialogContent, DialogTrigger, Input, Label } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
 import { MessageCircle, CheckCircle, XCircle, RefreshCw } from "lucide-react";
+import { useProtectedRoute } from "@/hooks/use-auth";
 
 export function UserOfferDetail() {
+  useProtectedRoute();
   const { id } = useParams();
   const [, setLocation] = useLocation();
   const { data: offer, isLoading, refetch } = useGetOffer(id!);

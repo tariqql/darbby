@@ -7,6 +7,7 @@ export interface JwtPayload {
   id: string;
   email: string;
   actor: "USER" | "MERCHANT";
+  name?: string;
 }
 
 export function signToken(payload: JwtPayload): string {

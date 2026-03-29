@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, users, merchants } from "@workspace/db";
+import { customersDb, users, merchantsDb, merchants } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { signToken } from "../lib/auth.js";
@@ -16,14 +16,14 @@ router.post("/user/register", async (req, res) => {
     return;
   }
 
-  const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+  const existing = await customersDb.select({ id: users.id }).from(users).where(eq(users.email, email.toLowerCase())).limit(1);
   if (existing.length) {
     res.status(409).json({ error: "Email already registered" });
     return;
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const [user] = await db.insert(users).values({
+  const [user] = await customersDb.insert(users).values({
     fullName,
     email: email.toLowerCase(),
     phone: phone || null,
@@ -52,7 +52,7 @@ router.post("/user/login", async (req, res) => {
     return;
   }
 
-  const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+  const [user] = await customersDb.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
   if (!user || !user.isActive) {
     res.status(401).json({ error: "Invalid credentials" });
     return;
@@ -64,7 +64,7 @@ router.post("/user/login", async (req, res) => {
     return;
   }
 
-  await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
+  await customersDb.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
 
   const token = signToken({ id: user.id, email: user.email, actor: "USER" });
   res.json({ token, actor: "USER", id: user.id, email: user.email, name: user.fullName });
@@ -82,14 +82,14 @@ router.post("/merchant/register", async (req, res) => {
     return;
   }
 
-  const existing = await db.select({ id: merchants.id }).from(merchants).where(eq(merchants.email, email.toLowerCase())).limit(1);
+  const existing = await merchantsDb.select({ id: merchants.id }).from(merchants).where(eq(merchants.email, email.toLowerCase())).limit(1);
   if (existing.length) {
     res.status(409).json({ error: "Email already registered" });
     return;
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const [merchant] = await db.insert(merchants).values({
+  const [merchant] = await merchantsDb.insert(merchants).values({
     businessName,
     ownerName,
     email: email.toLowerCase(),
@@ -122,7 +122,7 @@ router.post("/merchant/login", async (req, res) => {
     return;
   }
 
-  const [merchant] = await db.select().from(merchants).where(eq(merchants.email, email.toLowerCase())).limit(1);
+  const [merchant] = await merchantsDb.select().from(merchants).where(eq(merchants.email, email.toLowerCase())).limit(1);
   if (!merchant || !merchant.isActive) {
     res.status(401).json({ error: "Invalid credentials" });
     return;
@@ -134,7 +134,7 @@ router.post("/merchant/login", async (req, res) => {
     return;
   }
 
-  await db.update(merchants).set({ updatedAt: new Date() }).where(eq(merchants.id, merchant.id));
+  await merchantsDb.update(merchants).set({ updatedAt: new Date() }).where(eq(merchants.id, merchant.id));
 
   const token = signToken({ id: merchant.id, email: merchant.email, actor: "MERCHANT" });
   res.json({ token, actor: "MERCHANT", id: merchant.id, email: merchant.email, name: merchant.businessName });

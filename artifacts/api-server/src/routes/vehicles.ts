@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, vehicleProfiles } from "@workspace/db";
+import { customersDb, vehicleProfiles } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { authenticate, requireActor } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/auditLog.js";
@@ -14,7 +14,7 @@ function auth(req: any): JwtPayload { return req.auth; }
 // GET /api/vehicles
 router.get("/", async (req, res) => {
   const { id } = auth(req);
-  const list = await db
+  const list = await customersDb
     .select()
     .from(vehicleProfiles)
     .where(and(eq(vehicleProfiles.userId, id), eq(vehicleProfiles.isActive, true)));
@@ -31,7 +31,7 @@ router.post("/", async (req, res) => {
     return;
   }
 
-  const [vehicle] = await db.insert(vehicleProfiles).values({
+  const [vehicle] = await customersDb.insert(vehicleProfiles).values({
     userId: id,
     nickname, vehicleType, make, model, year, color, fuelType,
     plateNo: plateNo || null,
@@ -48,7 +48,7 @@ router.put("/:id", async (req, res) => {
   const { id: userId } = auth(req);
   const { id } = req.params;
 
-  const [existing] = await db.select().from(vehicleProfiles)
+  const [existing] = await customersDb.select().from(vehicleProfiles)
     .where(and(eq(vehicleProfiles.id, id), eq(vehicleProfiles.userId, userId))).limit(1);
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
@@ -59,7 +59,7 @@ router.put("/:id", async (req, res) => {
   }
   (updates as any).updatedAt = new Date();
 
-  const [updated] = await db.update(vehicleProfiles).set(updates).where(eq(vehicleProfiles.id, id)).returning();
+  const [updated] = await customersDb.update(vehicleProfiles).set(updates).where(eq(vehicleProfiles.id, id)).returning();
   await writeAuditLog({ tableName: "vehicle_profiles", recordId: id, operation: "UPDATE", actorType: "USER", actorId: userId, oldValues: existing as any, newValues: updated as any });
   res.json(updated);
 });
@@ -69,11 +69,11 @@ router.delete("/:id", async (req, res) => {
   const { id: userId } = auth(req);
   const { id } = req.params;
 
-  const [existing] = await db.select().from(vehicleProfiles)
+  const [existing] = await customersDb.select().from(vehicleProfiles)
     .where(and(eq(vehicleProfiles.id, id), eq(vehicleProfiles.userId, userId))).limit(1);
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
-  await db.update(vehicleProfiles).set({ isActive: false, updatedAt: new Date() }).where(eq(vehicleProfiles.id, id));
+  await customersDb.update(vehicleProfiles).set({ isActive: false, updatedAt: new Date() }).where(eq(vehicleProfiles.id, id));
   res.status(204).end();
 });
 

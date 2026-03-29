@@ -9,12 +9,10 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-import { merchants } from "./merchants";
-import { products } from "./products";
 
 export const autoNegotiatorSettings = pgTable("auto_negotiator_settings", {
   id: uuid("id").primaryKey().defaultRandom(),
-  merchantId: uuid("merchant_id").notNull().unique().references(() => merchants.id, { onDelete: "cascade" }),
+  merchantId: uuid("merchant_id").notNull().unique(),
   isEnabled: boolean("is_enabled").default(false),
   responseDelayMin: integer("response_delay_min").default(5),
   purposeRules: jsonb("purpose_rules").default({}),
@@ -25,7 +23,7 @@ export const autoNegotiatorSettings = pgTable("auto_negotiator_settings", {
 export const autoNegotiatorProducts = pgTable("auto_negotiator_products", {
   id: uuid("id").primaryKey().defaultRandom(),
   negotiatorId: uuid("negotiator_id").notNull().references(() => autoNegotiatorSettings.id, { onDelete: "cascade" }),
-  productId: uuid("product_id").notNull().references(() => products.id),
+  productId: uuid("product_id").notNull(),
   minDiscountPct: decimal("min_discount_pct", { precision: 5, scale: 2 }).notNull(),
   maxDiscountPct: decimal("max_discount_pct", { precision: 5, scale: 2 }).notNull(),
 });

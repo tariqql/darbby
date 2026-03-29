@@ -1,7 +1,8 @@
 import { Router } from "express";
 import {
-  db, merchants, merchantBranches, products, offers, offerItems,
-  negotiations, autoNegotiatorSettings, autoNegotiatorProducts, transactions, commissionLedger,
+  merchantsDb, merchants, merchantBranches, products,
+  ordersDb, offers, offerItems, negotiations, transactions, commissionLedger,
+  dinaDb, autoNegotiatorSettings, autoNegotiatorProducts,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { authenticate, requireActor, JwtPayload } from "../lib/auth.js";
@@ -22,21 +23,21 @@ function dbRows<T>(result: any): T[] {
 }
 
 async function getOfferWithDetails(offerId: string) {
-  const [offer] = await db.select().from(offers).where(eq(offers.id, offerId)).limit(1);
+  const [offer] = await ordersDb.select().from(offers).where(eq(offers.id, offerId)).limit(1);
   if (!offer) return null;
-  const itemsRaw = await db.execute<any>(sql`
+  const itemsRaw = await ordersDb.execute<any>(sql`
     SELECT oi.*, p.name as product_name FROM offer_items oi
     JOIN products p ON p.id = oi.product_id
     WHERE oi.offer_id = ${offerId}::uuid
   `);
-  const negs = await db.select().from(negotiations).where(eq(negotiations.offerId, offerId));
+  const negs = await ordersDb.select().from(negotiations).where(eq(negotiations.offerId, offerId));
   return { ...offer, items: dbRows(itemsRaw), negotiations: negs };
 }
 
 // ─── PROFILE ─────────────────────────────────────────────────────────────
 router.get("/profile", async (req, res) => {
   const { id } = auth(req);
-  const [m] = await db.select().from(merchants).where(eq(merchants.id, id)).limit(1);
+  const [m] = await merchantsDb.select().from(merchants).where(eq(merchants.id, id)).limit(1);
   if (!m) { res.status(404).json({ error: "Not found" }); return; }
   const { passwordHash, ...safe } = m;
   res.json(safe);
@@ -45,7 +46,7 @@ router.get("/profile", async (req, res) => {
 router.put("/profile", async (req, res) => {
   const { id } = auth(req);
   const { businessName, ownerName, phone, nationalAddress, fcmToken } = req.body;
-  const [updated] = await db.update(merchants).set({
+  const [updated] = await merchantsDb.update(merchants).set({
     ...(businessName && { businessName }),
     ...(ownerName && { ownerName }),
     ...(phone && { phone }),
@@ -61,7 +62,7 @@ router.put("/profile", async (req, res) => {
 router.get("/stats", async (req, res) => {
   const { id } = auth(req);
 
-  const statsRaw = await db.execute<any>(sql`
+  const statsRaw = await ordersDb.execute<any>(sql`
     SELECT
       COUNT(*)::int AS total_offers,
       SUM(CASE WHEN status = 'ACCEPTED' THEN 1 ELSE 0 END)::int AS accepted_offers,
@@ -71,7 +72,7 @@ router.get("/stats", async (req, res) => {
   `);
   const stats = dbRows<any>(statsRaw)[0] ?? {};
 
-  const nearbyRaw = await db.execute<any>(sql`
+  const nearbyRaw = await ordersDb.execute<any>(sql`
     SELECT COUNT(*)::int AS cnt
     FROM trips t
     JOIN merchant_branches mb ON mb.merchant_id = ${id}::uuid AND mb.status = 'ACTIVE'
@@ -93,7 +94,7 @@ router.get("/stats", async (req, res) => {
 // ─── COMMISSION ────────────────────────────────────────────────────────────
 router.get("/commission", async (req, res) => {
   const { id } = auth(req);
-  const summaryRaw = await db.execute<any>(sql`
+  const summaryRaw = await ordersDb.execute<any>(sql`
     SELECT
       COUNT(*)::int AS total_deals,
       COALESCE(SUM(gross_amount), 0) AS total_gross,
@@ -122,7 +123,7 @@ router.get("/trips", async (req, res) => {
   let branchCondition = sql`mb.merchant_id = ${id}::uuid`;
   if (branchId) branchCondition = sql`mb.id = ${branchId}::uuid AND mb.merchant_id = ${id}::uuid`;
 
-  const nearbyRaw = await db.execute<any>(sql`
+  const nearbyRaw = await ordersDb.execute<any>(sql`
     SELECT DISTINCT ON (t.id)
       t.*,
       mb.id AS matched_branch_id,
@@ -153,13 +154,13 @@ router.post("/trips/:tripId/offer", async (req, res) => {
 
   if (!items?.length || !expiresAt) { res.status(400).json({ error: "items and expiresAt are required" }); return; }
 
-  const tripRaw = await db.execute<any>(sql`SELECT * FROM trips WHERE id = ${tripId}::uuid AND status = 'ACTIVE' LIMIT 1`);
+  const tripRaw = await ordersDb.execute<any>(sql`SELECT * FROM trips WHERE id = ${tripId}::uuid AND status = 'ACTIVE' LIMIT 1`);
   const trip = dbRows<any>(tripRaw)[0];
   if (!trip) { res.status(404).json({ error: "Trip not found or not active" }); return; }
 
   const totalPrice = items.reduce((s: number, i: any) => s + i.unitPrice * i.quantity, 0);
 
-  const [offer] = await db.insert(offers).values({
+  const [offer] = await ordersDb.insert(offers).values({
     tripId,
     merchantId: id,
     branchId: branchId || null,
@@ -170,7 +171,7 @@ router.post("/trips/:tripId/offer", async (req, res) => {
   }).returning();
 
   for (const item of items) {
-    await db.insert(offerItems).values({
+    await ordersDb.insert(offerItems).values({
       offerId: offer.id,
       productId: item.productId,
       quantity: item.quantity.toString(),
@@ -195,9 +196,9 @@ router.get("/offers", async (req, res) => {
   let whereClause = sql`merchant_id = ${id}::uuid`;
   if (statusFilter) whereClause = sql`merchant_id = ${id}::uuid AND status = ${statusFilter}::offer_status`;
 
-  const countRaw = await db.execute<any>(sql`SELECT COUNT(*)::int AS total FROM offers WHERE ${whereClause}`);
+  const countRaw = await ordersDb.execute<any>(sql`SELECT COUNT(*)::int AS total FROM offers WHERE ${whereClause}`);
   const total = (dbRows<any>(countRaw)[0] ?? {}).total ?? 0;
-  const dataRaw = await db.execute<any>(sql`SELECT * FROM offers WHERE ${whereClause} ORDER BY created_at DESC LIMIT ${pageSize} OFFSET ${offset}`);
+  const dataRaw = await ordersDb.execute<any>(sql`SELECT * FROM offers WHERE ${whereClause} ORDER BY created_at DESC LIMIT ${pageSize} OFFSET ${offset}`);
 
   res.json({ data: dbRows(dataRaw), total, page, pageSize });
 });
@@ -207,16 +208,16 @@ router.post("/offers/:id/accept-counter", async (req, res) => {
   const { id: merchantId } = auth(req);
   const { id } = req.params;
 
-  const [offer] = await db.select().from(offers).where(and(eq(offers.id, id), eq(offers.merchantId, merchantId))).limit(1);
+  const [offer] = await ordersDb.select().from(offers).where(and(eq(offers.id, id), eq(offers.merchantId, merchantId))).limit(1);
   if (!offer) { res.status(404).json({ error: "Not found" }); return; }
 
-  const lastNeg = await db.select().from(negotiations)
+  const lastNeg = await ordersDb.select().from(negotiations)
     .where(and(eq(negotiations.offerId, id), sql`sender_type = 'USER'`))
     .orderBy(sql`created_at DESC`).limit(1);
 
   const finalPrice = lastNeg[0]?.proposedPrice || offer.totalPrice;
 
-  await db.update(offers).set({
+  await ordersDb.update(offers).set({
     status: "ACCEPTED",
     finalPrice,
     respondedAt: new Date(),
@@ -238,12 +239,12 @@ router.post("/offers/:id/counter", async (req, res) => {
 
   if (!proposedPrice) { res.status(400).json({ error: "proposedPrice required" }); return; }
 
-  const [offer] = await db.select().from(offers).where(and(eq(offers.id, id), eq(offers.merchantId, merchantId))).limit(1);
+  const [offer] = await ordersDb.select().from(offers).where(and(eq(offers.id, id), eq(offers.merchantId, merchantId))).limit(1);
   if (!offer) { res.status(404).json({ error: "Not found" }); return; }
 
-  await db.update(offers).set({ status: "NEGOTIATING", updatedAt: new Date() }).where(eq(offers.id, id));
+  await ordersDb.update(offers).set({ status: "NEGOTIATING", updatedAt: new Date() }).where(eq(offers.id, id));
 
-  const [neg] = await db.insert(negotiations).values({
+  const [neg] = await ordersDb.insert(negotiations).values({
     offerId: id,
     senderType: "MERCHANT",
     proposedPrice: proposedPrice.toString(),
@@ -257,7 +258,7 @@ router.post("/offers/:id/counter", async (req, res) => {
 // ─── BRANCHES ─────────────────────────────────────────────────────────────
 router.get("/branches", async (req, res) => {
   const { id } = auth(req);
-  const raw = await db.execute<any>(sql`
+  const raw = await ordersDb.execute<any>(sql`
     SELECT *, ST_X(location::geometry) AS lng, ST_Y(location::geometry) AS lat
     FROM merchant_branches WHERE merchant_id = ${id}::uuid ORDER BY created_at ASC
   `);
@@ -274,7 +275,7 @@ router.post("/branches", async (req, res) => {
   }
 
   const geog = `SRID=4326;POINT(${lng} ${lat})`;
-  const branchRaw = await db.execute<any>(sql`
+  const branchRaw = await ordersDb.execute<any>(sql`
     INSERT INTO merchant_branches (id, merchant_id, branch_name, branch_code, location, address_text, service_radius_km, is_primary, working_hours, phone)
     VALUES (uuid_generate_v4(), ${id}::uuid, ${branchName}, ${branchCode ?? null}, ST_GeogFromText(${geog}),
       ${addressText ?? null}, ${serviceRadiusKm ?? 10.0}, ${isPrimary ?? false},
@@ -292,7 +293,7 @@ router.put("/branches/:id", async (req, res) => {
   const { id } = req.params;
   const { branchName, branchCode, lat, lng, addressText, serviceRadiusKm, isPrimary, workingHours, phone, status } = req.body;
 
-  const existingRaw = await db.execute<any>(sql`SELECT * FROM merchant_branches WHERE id = ${id}::uuid AND merchant_id = ${merchantId}::uuid LIMIT 1`);
+  const existingRaw = await ordersDb.execute<any>(sql`SELECT * FROM merchant_branches WHERE id = ${id}::uuid AND merchant_id = ${merchantId}::uuid LIMIT 1`);
   const existing = dbRows<any>(existingRaw)[0];
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
@@ -301,7 +302,7 @@ router.put("/branches/:id", async (req, res) => {
     geogUpdate = sql`location = ST_GeogFromText(${`SRID=4326;POINT(${lng} ${lat})`})`;
   }
 
-  const updatedRaw = await db.execute<any>(sql`
+  const updatedRaw = await ordersDb.execute<any>(sql`
     UPDATE merchant_branches SET
       branch_name = COALESCE(${branchName ?? null}, branch_name),
       branch_code = COALESCE(${branchCode ?? null}, branch_code),
@@ -324,14 +325,14 @@ router.put("/branches/:id", async (req, res) => {
 router.delete("/branches/:id", async (req, res) => {
   const { id: merchantId } = auth(req);
   const { id } = req.params;
-  await db.execute(sql`DELETE FROM merchant_branches WHERE id = ${id}::uuid AND merchant_id = ${merchantId}::uuid`);
+  await ordersDb.execute(sql`DELETE FROM merchant_branches WHERE id = ${id}::uuid AND merchant_id = ${merchantId}::uuid`);
   res.status(204).end();
 });
 
 // ─── PRODUCTS ─────────────────────────────────────────────────────────────
 router.get("/products", async (req, res) => {
   const { id } = auth(req);
-  const list = await db.select().from(products).where(eq(products.merchantId, id));
+  const list = await merchantsDb.select().from(products).where(eq(products.merchantId, id));
   res.json(list);
 });
 
@@ -340,7 +341,7 @@ router.post("/products", async (req, res) => {
   const { name, description, price, category, targetFuelType, images, stockQty, isAvailable } = req.body;
   if (!name || price === undefined) { res.status(400).json({ error: "name and price are required" }); return; }
 
-  const [product] = await db.insert(products).values({
+  const [product] = await merchantsDb.insert(products).values({
     merchantId: id,
     name, description: description || null,
     price: price.toString(),
@@ -358,10 +359,10 @@ router.put("/products/:id", async (req, res) => {
   const { id } = req.params;
   const { name, description, price, category, targetFuelType, images, stockQty, isAvailable } = req.body;
 
-  const [existing] = await db.select().from(products).where(and(eq(products.id, id), eq(products.merchantId, merchantId))).limit(1);
+  const [existing] = await merchantsDb.select().from(products).where(and(eq(products.id, id), eq(products.merchantId, merchantId))).limit(1);
   if (!existing) { res.status(404).json({ error: "Not found" }); return; }
 
-  const [updated] = await db.update(products).set({
+  const [updated] = await merchantsDb.update(products).set({
     ...(name && { name }),
     ...(description !== undefined && { description }),
     ...(price !== undefined && { price: price.toString() }),
@@ -378,17 +379,17 @@ router.put("/products/:id", async (req, res) => {
 router.delete("/products/:id", async (req, res) => {
   const { id: merchantId } = auth(req);
   const { id } = req.params;
-  await db.update(products).set({ isAvailable: false, updatedAt: new Date() }).where(and(eq(products.id, id), eq(products.merchantId, merchantId)));
+  await merchantsDb.update(products).set({ isAvailable: false, updatedAt: new Date() }).where(and(eq(products.id, id), eq(products.merchantId, merchantId)));
   res.status(204).end();
 });
 
 // ─── AUTO-NEGOTIATOR ──────────────────────────────────────────────────────
 router.get("/auto-negotiator", async (req, res) => {
   const { id } = auth(req);
-  const [settings] = await db.select().from(autoNegotiatorSettings).where(eq(autoNegotiatorSettings.merchantId, id)).limit(1);
+  const [settings] = await dinaDb.select().from(autoNegotiatorSettings).where(eq(autoNegotiatorSettings.merchantId, id)).limit(1);
   if (!settings) { res.status(404).json({ error: "Not configured" }); return; }
 
-  const prodsRaw = await db.execute<any>(sql`
+  const prodsRaw = await ordersDb.execute<any>(sql`
     SELECT anp.*, p.name as product_name FROM auto_negotiator_products anp
     JOIN products p ON p.id = anp.product_id
     WHERE anp.negotiator_id = ${settings.id}::uuid
@@ -401,17 +402,17 @@ router.put("/auto-negotiator", async (req, res) => {
   const { id } = auth(req);
   const { isEnabled, responseDelayMin, purposeRules, products: prodRules } = req.body;
 
-  let [settings] = await db.select().from(autoNegotiatorSettings).where(eq(autoNegotiatorSettings.merchantId, id)).limit(1);
+  let [settings] = await dinaDb.select().from(autoNegotiatorSettings).where(eq(autoNegotiatorSettings.merchantId, id)).limit(1);
 
   if (!settings) {
-    [settings] = await db.insert(autoNegotiatorSettings).values({
+    [settings] = await dinaDb.insert(autoNegotiatorSettings).values({
       merchantId: id,
       isEnabled: isEnabled ?? false,
       responseDelayMin: responseDelayMin ?? 5,
       purposeRules: purposeRules ?? {},
     }).returning();
   } else {
-    [settings] = await db.update(autoNegotiatorSettings).set({
+    [settings] = await dinaDb.update(autoNegotiatorSettings).set({
       ...(isEnabled !== undefined && { isEnabled }),
       ...(responseDelayMin !== undefined && { responseDelayMin }),
       ...(purposeRules !== undefined && { purposeRules }),
@@ -420,11 +421,11 @@ router.put("/auto-negotiator", async (req, res) => {
   }
 
   if (prodRules?.length) {
-    await db.delete(autoNegotiatorProducts).where(eq(autoNegotiatorProducts.negotiatorId, settings.id));
+    await dinaDb.delete(autoNegotiatorProducts).where(eq(autoNegotiatorProducts.negotiatorId, settings.id));
     for (const p of prodRules) {
       const minPct = p.minDiscountPct ?? p.minDiscountPercent ?? 0;
       const maxPct = p.maxDiscountPct ?? p.maxDiscountPercent ?? 0;
-      await db.insert(autoNegotiatorProducts).values({
+      await dinaDb.insert(autoNegotiatorProducts).values({
         negotiatorId: settings.id,
         productId: p.productId,
         minDiscountPct: minPct.toString(),
@@ -433,7 +434,7 @@ router.put("/auto-negotiator", async (req, res) => {
     }
   }
 
-  const prodsRaw2 = await db.execute<any>(sql`
+  const prodsRaw2 = await ordersDb.execute<any>(sql`
     SELECT anp.*, p.name as product_name FROM auto_negotiator_products anp
     JOIN products p ON p.id = anp.product_id
     WHERE anp.negotiator_id = ${settings.id}::uuid

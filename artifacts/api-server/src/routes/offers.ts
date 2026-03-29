@@ -1,5 +1,7 @@
 import { Router } from "express";
-import { db, offers, offerItems, negotiations, transactions, commissionLedger, products, users } from "@workspace/db";
+import { ordersDb, offers, offerItems, negotiations, transactions, commissionLedger } from "@workspace/db";
+import { merchantsDb, products } from "@workspace/db";
+import { customersDb, users } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { authenticate, JwtPayload } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/auditLog.js";
@@ -16,10 +18,10 @@ function dbRows<T = any>(result: any): T[] {
 }
 
 async function getOfferWithDetails(offerId: string) {
-  const [offer] = await db.select().from(offers).where(eq(offers.id, offerId)).limit(1);
+  const [offer] = await ordersDb.select().from(offers).where(eq(offers.id, offerId)).limit(1);
   if (!offer) return null;
 
-  const itemsRaw = await db.execute<any>(sql`
+  const itemsRaw = await ordersDb.execute<any>(sql`
     SELECT oi.*, p.name as product_name, oi.unit_price as "unitPrice", oi.quantity as quantity
     FROM offer_items oi
     JOIN products p ON p.id = oi.product_id
@@ -37,7 +39,7 @@ async function getOfferWithDetails(offerId: string) {
     lineTotal: parseFloat(r.line_total || (r.unit_price * r.quantity) || 0),
   }));
 
-  const negs = await db.select().from(negotiations).where(eq(negotiations.offerId, offerId));
+  const negs = await ordersDb.select().from(negotiations).where(eq(negotiations.offerId, offerId));
 
   return { ...offer, items, negotiations: negs };
 }
@@ -55,7 +57,7 @@ router.post("/:id/accept", async (req, res) => {
   if (actor !== "USER") { res.status(403).json({ error: "Forbidden" }); return; }
   const { id } = req.params;
 
-  const [offer] = await db.select().from(offers).where(eq(offers.id, id)).limit(1);
+  const [offer] = await ordersDb.select().from(offers).where(eq(offers.id, id)).limit(1);
   if (!offer) { res.status(404).json({ error: "Not found" }); return; }
 
   if (!["SENT", "VIEWED", "NEGOTIATING"].includes(offer.status!)) {
@@ -66,7 +68,7 @@ router.post("/:id/accept", async (req, res) => {
   const oldStatus = offer.status;
   const finalPrice = offer.finalPrice || offer.totalPrice;
 
-  const [updatedOffer] = await db.update(offers).set({
+  const [updatedOffer] = await ordersDb.update(offers).set({
     status: "ACCEPTED",
     finalPrice,
     respondedAt: new Date(),
@@ -74,7 +76,7 @@ router.post("/:id/accept", async (req, res) => {
   }).where(eq(offers.id, id)).returning();
 
   // Determine commission rate based on merchant subscription
-  const merchantRaw = await db.execute<any>(sql`SELECT subscription_plan FROM merchants WHERE id = ${offer.merchantId}::uuid LIMIT 1`);
+  const merchantRaw = await ordersDb.execute<any>(sql`SELECT subscription_plan FROM merchants WHERE id = ${offer.merchantId}::uuid LIMIT 1`);
   const merchant = (Array.isArray(merchantRaw) ? merchantRaw : (merchantRaw?.rows ?? []))[0];
   const commissionPct = merchant?.subscription_plan === "PREMIUM" ? 1.0 : 2.0;
   const grossAmt = parseFloat(finalPrice!.toString());
@@ -82,7 +84,7 @@ router.post("/:id/accept", async (req, res) => {
   const netAmt = parseFloat((grossAmt - commissionAmt).toFixed(2));
 
   // Create transaction
-  const [txn] = await db.insert(transactions).values({
+  const [txn] = await ordersDb.insert(transactions).values({
     offerId: id,
     merchantId: offer.merchantId,
     grossAmount: grossAmt.toString(),
@@ -94,7 +96,7 @@ router.post("/:id/accept", async (req, res) => {
   }).returning();
 
   // Create commission ledger entry
-  await db.insert(commissionLedger).values({
+  await ordersDb.insert(commissionLedger).values({
     offerId: id,
     transactionId: txn.id,
     merchantId: offer.merchantId,
@@ -105,7 +107,7 @@ router.post("/:id/accept", async (req, res) => {
   });
 
   // Update user price_sensitivity
-  await db.execute(sql`
+  await ordersDb.execute(sql`
     UPDATE users SET price_sensitivity = (
       SELECT COALESCE(AVG(
         CASE
@@ -140,10 +142,10 @@ router.post("/:id/reject", async (req, res) => {
   if (actor !== "USER") { res.status(403).json({ error: "Forbidden" }); return; }
   const { id } = req.params;
 
-  const [offer] = await db.select().from(offers).where(eq(offers.id, id)).limit(1);
+  const [offer] = await ordersDb.select().from(offers).where(eq(offers.id, id)).limit(1);
   if (!offer) { res.status(404).json({ error: "Not found" }); return; }
 
-  await db.update(offers).set({ status: "REJECTED", respondedAt: new Date(), updatedAt: new Date() }).where(eq(offers.id, id));
+  await ordersDb.update(offers).set({ status: "REJECTED", respondedAt: new Date(), updatedAt: new Date() }).where(eq(offers.id, id));
 
   await writeAuditLog({ tableName: "offers", recordId: id, operation: "STATUS_CHANGE", actorType: "USER", actorId: userId, oldValues: { status: offer.status }, newValues: { status: "REJECTED" }, changedFields: ["status"] });
 
@@ -160,14 +162,14 @@ router.post("/:id/counter", async (req, res) => {
 
   if (!proposedPrice) { res.status(400).json({ error: "proposedPrice is required" }); return; }
 
-  const [offer] = await db.select().from(offers).where(eq(offers.id, id)).limit(1);
+  const [offer] = await ordersDb.select().from(offers).where(eq(offers.id, id)).limit(1);
   if (!offer) { res.status(404).json({ error: "Not found" }); return; }
 
-  const [user] = await db.select({ priceSensitivity: users.priceSensitivity }).from(users).where(eq(users.id, userId)).limit(1);
+  const [user] = await customersDb.select({ priceSensitivity: users.priceSensitivity }).from(users).where(eq(users.id, userId)).limit(1);
 
-  await db.update(offers).set({ status: "NEGOTIATING", updatedAt: new Date() }).where(eq(offers.id, id));
+  await ordersDb.update(offers).set({ status: "NEGOTIATING", updatedAt: new Date() }).where(eq(offers.id, id));
 
-  const [neg] = await db.insert(negotiations).values({
+  const [neg] = await ordersDb.insert(negotiations).values({
     offerId: id,
     senderType: "USER",
     proposedPrice: proposedPrice.toString(),

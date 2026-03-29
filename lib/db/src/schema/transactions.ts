@@ -9,8 +9,6 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { offers } from "./offers";
-import { merchants } from "./merchants";
-import { merchantBranches } from "./merchantBranches";
 
 export const txnStatusEnum = pgEnum("txn_status", [
   "PENDING",
@@ -30,7 +28,7 @@ export const ledgerStatusEnum = pgEnum("ledger_status", [
 export const transactions = pgTable("transactions", {
   id: uuid("id").primaryKey().defaultRandom(),
   offerId: uuid("offer_id").notNull().unique().references(() => offers.id),
-  merchantId: uuid("merchant_id").notNull().references(() => merchants.id),
+  merchantId: uuid("merchant_id").notNull(),
   grossAmount: decimal("gross_amount", { precision: 10, scale: 2 }).notNull(),
   commissionPct: decimal("commission_pct", { precision: 5, scale: 2 }).notNull(),
   commissionAmt: decimal("commission_amt", { precision: 10, scale: 2 }).notNull(),
@@ -44,8 +42,8 @@ export const commissionLedger = pgTable("commission_ledger", {
   id: uuid("id").primaryKey().defaultRandom(),
   offerId: uuid("offer_id").notNull().unique().references(() => offers.id),
   transactionId: uuid("transaction_id").notNull().unique().references(() => transactions.id),
-  merchantId: uuid("merchant_id").notNull().references(() => merchants.id),
-  branchId: uuid("branch_id").references(() => merchantBranches.id),
+  merchantId: uuid("merchant_id").notNull(),
+  branchId: uuid("branch_id"),
   grossAmount: decimal("gross_amount", { precision: 10, scale: 2 }).notNull(),
   commissionRatePct: decimal("commission_rate_pct", { precision: 5, scale: 2 }).notNull(),
   ledgerStatus: ledgerStatusEnum("ledger_status").notNull().default("PENDING"),

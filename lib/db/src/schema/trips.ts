@@ -9,8 +9,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-import { users } from "./users";
-import { vehicleProfiles } from "./vehicleProfiles";
 
 export const tripStatusEnum = pgEnum("trip_status", [
   "ACTIVE",
@@ -30,8 +28,8 @@ export const tripPurposeEnum = pgEnum("trip_purpose", [
 
 export const trips = pgTable("trips", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  vehicleProfileId: uuid("vehicle_profile_id").references(() => vehicleProfiles.id, { onDelete: "set null" }),
+  userId: uuid("user_id").notNull(),
+  vehicleProfileId: uuid("vehicle_profile_id"),
   title: varchar("title", { length: 100 }),
   tripPurpose: tripPurposeEnum("trip_purpose").notNull().default("OTHER"),
   originName: varchar("origin_name", { length: 200 }).notNull(),

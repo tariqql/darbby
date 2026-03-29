@@ -9,10 +9,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-import { trips } from "./trips";
-import { merchants } from "./merchants";
-import { merchantBranches } from "./merchantBranches";
-import { products } from "./products";
 
 export const offerStatusEnum = pgEnum("offer_status", [
   "SENT",
@@ -27,9 +23,9 @@ export const offerStatusEnum = pgEnum("offer_status", [
 
 export const offers = pgTable("offers", {
   id: uuid("id").primaryKey().defaultRandom(),
-  tripId: uuid("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
-  merchantId: uuid("merchant_id").notNull().references(() => merchants.id),
-  branchId: uuid("branch_id").references(() => merchantBranches.id, { onDelete: "set null" }),
+  tripId: uuid("trip_id").notNull(),
+  merchantId: uuid("merchant_id").notNull(),
+  branchId: uuid("branch_id"),
   message: text("message"),
   totalPrice: decimal("total_price", { precision: 10, scale: 2 }).notNull(),
   finalPrice: decimal("final_price", { precision: 10, scale: 2 }),
@@ -46,7 +42,7 @@ export const offers = pgTable("offers", {
 export const offerItems = pgTable("offer_items", {
   id: uuid("id").primaryKey().defaultRandom(),
   offerId: uuid("offer_id").notNull().references(() => offers.id, { onDelete: "cascade" }),
-  productId: uuid("product_id").notNull().references(() => products.id),
+  productId: uuid("product_id").notNull(),
   quantity: decimal("quantity", { precision: 10, scale: 0 }).notNull().default("1"),
   unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
   negotiatedPrice: decimal("negotiated_price", { precision: 10, scale: 2 }),

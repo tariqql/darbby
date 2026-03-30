@@ -273,6 +273,43 @@ router.post("/confirm", authenticate, async (req, res) => {
   });
 });
 
+// GET /api/cashier/order/:order_id/receipt — جلب الإيصال بعد إغلاق الأوردر
+router.get("/order/:order_id/receipt", authenticate, async (req, res) => {
+  const { id: merchantId } = auth(req);
+  const result = await sharedPool.query(
+    `SELECT r.*, o.barcode, o.merchant_id
+     FROM receipts r
+     JOIN orders o ON o.id = r.order_id
+     WHERE r.order_id = $1::uuid AND o.merchant_id = $2::uuid
+     LIMIT 1`,
+    [req.params.order_id, merchantId]
+  );
+  const receipt = result.rows[0];
+  if (!receipt) { res.status(404).json({ error: "RECEIPT_NOT_FOUND" }); return; }
+
+  const vat = parseFloat(receipt.final_amount) * 0.15;
+  const commission = parseFloat(receipt.commission_amount);
+  res.json({
+    receipt_id: receipt.id,
+    invoice_number: receipt.invoice_number,
+    barcode: receipt.barcode,
+    status: receipt.status,
+    payment_method: receipt.payment_method,
+    pos_receipt_number: receipt.pos_receipt_number,
+    cashier_id: receipt.cashier_id,
+    amounts: {
+      subtotal: parseFloat(receipt.final_amount),
+      commission: commission,
+      vat: parseFloat(receipt.vat_amount || vat.toFixed(2)),
+      total_with_vat: parseFloat(receipt.total_with_vat || (parseFloat(receipt.final_amount) + vat).toFixed(2)),
+    },
+    times: {
+      issued_at: receipt.issued_at,
+      voided_at: receipt.voided_at || null,
+    },
+  });
+});
+
 // GET /api/cashier/order/:order_id/status
 router.get("/order/:order_id/status", authenticate, async (req, res) => {
   const { actor } = auth(req);

@@ -26,8 +26,27 @@ app.use(
   }),
 );
 
+const ALLOWED_ORIGINS = [
+  "https://app.darbby.co",
+  "https://partners.darbby.co",
+  "https://staff.darbby.co",
+  "https://darbby.co",
+  "https://www.darbby.co",
+];
+
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (
+      ALLOWED_ORIGINS.includes(origin) ||
+      origin.endsWith(".replit.app") ||
+      origin.endsWith(".replit.dev") ||
+      process.env.NODE_ENV !== "production"
+    ) {
+      return callback(null, true);
+    }
+    callback(new Error(`CORS: origin not allowed — ${origin}`));
+  },
   credentials: true,
 }));
 app.use(express.json({ limit: "10mb" }));

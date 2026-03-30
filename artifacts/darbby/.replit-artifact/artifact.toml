@@ -18,9 +18,15 @@ localPort = 24266
 run = "pnpm --filter @workspace/darbby run dev"
 
 [services.production]
-build = [ "pnpm", "--filter", "@workspace/darbby", "run", "build" ]
 publicDir = "artifacts/darbby/dist/public"
 serve = "static"
+
+[services.production.build]
+args = ["pnpm", "--filter", "@workspace/darbby", "run", "build"]
+
+[services.production.build.env]
+NODE_ENV = "production"
+BASE_PATH = "/"
 
 [[services.production.rewrites]]
 from = "/*"

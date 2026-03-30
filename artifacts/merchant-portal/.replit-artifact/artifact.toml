@@ -18,9 +18,15 @@ localPort = 21804
 run = "pnpm --filter @workspace/merchant-portal run dev"
 
 [services.production]
-build = [ "pnpm", "--filter", "@workspace/merchant-portal", "run", "build" ]
 publicDir = "artifacts/merchant-portal/dist/public"
 serve = "static"
+
+[services.production.build]
+args = ["pnpm", "--filter", "@workspace/merchant-portal", "run", "build"]
+
+[services.production.build.env]
+NODE_ENV = "production"
+BASE_PATH = "/"
 
 [[services.production.rewrites]]
 from = "/*"

@@ -21,6 +21,11 @@ export const offerStatusEnum = pgEnum("offer_status", [
   "FINALIZED",
 ]);
 
+export const offerSourceEnum = pgEnum("offer_source", [
+  "MERCHANT",
+  "DINA",
+]);
+
 export const offers = pgTable("offers", {
   id: uuid("id").primaryKey().defaultRandom(),
   tripId: uuid("trip_id").notNull(),
@@ -31,6 +36,7 @@ export const offers = pgTable("offers", {
   finalPrice: decimal("final_price", { precision: 10, scale: 2 }),
   status: offerStatusEnum("status").default("SENT"),
   isAutoOffer: boolean("is_auto_offer").default(false),
+  offerSource: offerSourceEnum("offer_source").notNull().default("MERCHANT"),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   viewedAt: timestamp("viewed_at", { withTimezone: true }),
   respondedAt: timestamp("responded_at", { withTimezone: true }),

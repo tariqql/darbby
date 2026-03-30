@@ -43,7 +43,15 @@ async function getOfferWithDetails(offerId: string) {
   }));
 
   const negs = await sharedDb.select().from(negotiations).where(eq(negotiations.offerId, offerId));
-  return { ...offer, items, negotiations: negs };
+
+  const generatedBy: "MERCHANT" | "DINA" = offer.offerSource ?? "MERCHANT";
+  return {
+    ...offer,
+    generatedBy,
+    isDinaOffer: generatedBy === "DINA",
+    items,
+    negotiations: negs,
+  };
 }
 
 // ─── PROFILE ─────────────────────────────────────────────────────────────
@@ -187,17 +195,28 @@ router.post("/trips/:tripId/offer", async (req, res) => {
   const { branchId, message, expiresAt, items } = req.body;
 
   if (!items?.length || !expiresAt) { res.status(400).json({ error: "items and expiresAt are required" }); return; }
+  if (!tripId) { res.status(400).json({ error: "tripId is required" }); return; }
 
-  const tripRaw = await sharedDb.execute<any>(sql`SELECT * FROM trips WHERE id = ${tripId}::uuid AND status = 'ACTIVE' LIMIT 1`);
+  // Integrity check: trip must exist, be ACTIVE, and have a valid user_id
+  const tripRaw = await sharedDb.execute<any>(sql`
+    SELECT id, user_id, status FROM trips
+    WHERE id = ${tripId}::uuid AND status = 'ACTIVE' AND user_id IS NOT NULL
+    LIMIT 1
+  `);
   const trip = dbRows<any>(tripRaw)[0];
-  if (!trip) { res.status(404).json({ error: "Trip not found or not active" }); return; }
+  if (!trip) { res.status(404).json({ error: "Trip not found, not active, or has no owner" }); return; }
+
+  // Integrity check: merchant must exist
+  const merchantRaw = await merchantsDb.execute<any>(sql`SELECT id FROM merchants WHERE id = ${id}::uuid LIMIT 1`);
+  if (!dbRows<any>(merchantRaw)[0]) { res.status(403).json({ error: "Merchant account not found" }); return; }
 
   const totalPrice = items.reduce((s: number, i: any) => s + i.unitPrice * i.quantity, 0);
 
   // Raw INSERT to avoid Drizzle sending "" (empty string) for nullable UUID branch_id
+  // offer_source = 'MERCHANT' — يدوي من التاجر
   const offerInsert = await sharedPool.query(
-    `INSERT INTO offers (trip_id, merchant_id, branch_id, message, total_price, expires_at, is_auto_offer)
-     VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, false)
+    `INSERT INTO offers (trip_id, merchant_id, branch_id, message, total_price, expires_at, is_auto_offer, offer_source)
+     VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, false, 'MERCHANT')
      RETURNING *`,
     [tripId, id, branchId || null, message || null, totalPrice.toString(), new Date(expiresAt)]
   );

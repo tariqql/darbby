@@ -51,7 +51,16 @@ async function getOfferWithDetails(offerId: string) {
 
   const negs = await sharedDb.select().from(negotiations).where(eq(negotiations.offerId, offerId));
 
-  return { ...offer, items, negotiations: negs };
+  const generatedBy: "MERCHANT" | "DINA" = offer.offerSource ?? "MERCHANT";
+  return {
+    ...offer,
+    generatedBy,
+    isDinaOffer: generatedBy === "DINA",
+    totalPrice: parseFloat(offer.totalPrice?.toString() ?? "0"),
+    finalPrice: offer.finalPrice ? parseFloat(offer.finalPrice.toString()) : null,
+    items,
+    negotiations: negs,
+  };
 }
 
 // GET /api/offers/:id

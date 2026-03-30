@@ -501,4 +501,39 @@ router.put("/auto-negotiator", async (req, res) => {
   res.json({ ...settings, products: dbRows(prodsRaw2) });
 });
 
+// GET /api/merchant/api-keys — عرض مفاتيح الـ API للتاجر (مُخفى جزئياً)
+router.get("/api-keys", async (req, res) => {
+  const { id } = auth(req);
+  const result = await sharedPool.query(
+    `SELECT id, key_type, key_prefix, description, is_active, created_at, last_used_at,
+            substring(api_key, 1, 12) || '••••••••••••••••••••••••••••••' AS api_key_masked,
+            api_key
+     FROM merchant_api_keys
+     WHERE merchant_id = $1::uuid
+     ORDER BY created_at DESC`,
+    [id]
+  );
+  res.json({ keys: result.rows });
+});
+
+// POST /api/merchant/api-keys/rotate — إنشاء مفتاح جديد (يُلغي القديم)
+router.post("/api-keys/rotate", async (req, res) => {
+  const { id } = auth(req);
+  const crypto = (await import("crypto")).default;
+  const rawKey = `drb_live_${crypto.randomBytes(20).toString("hex")}`;
+  const prefix = rawKey.substring(0, 12);
+
+  await sharedPool.query(
+    `UPDATE merchant_api_keys SET is_active = false WHERE merchant_id = $1::uuid AND key_type = 'LIVE'`,
+    [id]
+  );
+  const result = await sharedPool.query(
+    `INSERT INTO merchant_api_keys (merchant_id, api_key, key_type, key_prefix, description)
+     VALUES ($1::uuid, $2, 'LIVE', $3, 'مفتاح LIVE — تم التجديد تلقائياً')
+     RETURNING id, key_prefix, api_key, created_at`,
+    [id, rawKey, prefix]
+  );
+  res.json({ success: true, new_key: result.rows[0] });
+});
+
 export default router;

@@ -14,3 +14,5 @@ export * from "./notifications";
 export * from "./operationsLog";
 export * from "./staff";
 export * from "./dina";
+export * from "./orders";
+export * from "./integrations";

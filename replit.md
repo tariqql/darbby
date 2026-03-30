@@ -44,6 +44,11 @@ Smart travel platform connecting travelers (customers) with merchants (fuel stat
 - **negotiations** — Price negotiation rounds (USER/MERCHANT/SYSTEM sender)
 - **transactions** — Financial transactions when offer accepted
 - **commission_ledger** — Platform commission tracking (1% PREMIUM / 2% FREE)
+- **orders** — Orders with barcode (DRB-YYYY-NNNNN-XXX) created on offer acceptance (Open/Closed/Cancelled/Expired). Sequence: `order_barcode_seq`
+- **receipts** — Cashier-issued receipts after scanning barcode (ACTIVE/VOIDED). Includes VAT (15%), commission, invoice number
+- **merchant_api_keys** — API keys per merchant (LIVE/TEST) for POS integration
+- **webhook_registrations** — POS system webhooks (URL + events + HMAC secret)
+- **webhook_deliveries** — Webhook delivery log with retry logic (3 attempts)
 - **notifications** — Push notification feed for users and merchants
 - **system_operations_log** — Full Audit Trail (JSONB old/new values)
 - Connection: `sharedDb` via `buildDbUrl("darbby_shared")`

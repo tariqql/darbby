@@ -9,6 +9,9 @@ import notificationsRouter from "./notifications.js";
 import geoRouter from "./geo.js";
 import dinaRouter from "./dina.js";
 import dinaNegoRouter from "./dinaNegotiate.js";
+import cashierRouter from "./cashier.js";
+import webhooksRouter from "./webhooks.js";
+import adminRouter from "./admin.js";
 
 const router: IRouter = Router();
 
@@ -22,5 +25,8 @@ router.use("/notifications", notificationsRouter);
 router.use("/geo", geoRouter);
 router.use("/dina", dinaRouter);
 router.use("/dina/negotiate", dinaNegoRouter);
+router.use("/cashier", cashierRouter);
+router.use("/webhooks", webhooksRouter);
+router.use("/admin", adminRouter);
 
 export default router;

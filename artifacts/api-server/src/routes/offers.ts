@@ -1,8 +1,10 @@
 import { Router } from "express";
-import { sharedDb, sharedPool, merchantsDb, merchantsPool, customersDb, offers, offerItems, negotiations, transactions, commissionLedger, products, users } from "@workspace/db";
+import { sharedDb, sharedPool, merchantsDb, merchantsPool, customersDb, offers, offerItems, negotiations, transactions, commissionLedger, orders, products, users } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { authenticate, JwtPayload } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/auditLog.js";
+import { generateBarcode } from "../lib/barcode.js";
+import { dispatchWebhook } from "../lib/webhook.js";
 
 const router = Router();
 router.use(authenticate);
@@ -133,6 +135,30 @@ router.post("/:id/accept", async (req, res) => {
      grossAmt.toString(), commissionPct.toString(), commissionAmt.toString(), netAmt.toString()]
   );
 
+  // Create Order with barcode (expires in 3 hours)
+  const barcode = await generateBarcode();
+  const expiresAt = new Date(Date.now() + 3 * 60 * 60 * 1000);
+
+  await sharedPool.query(
+    `INSERT INTO orders
+       (offer_id, trip_id, user_id, merchant_id, branch_id, barcode, status, final_price, expires_at)
+     SELECT o.id, o.trip_id,
+       (SELECT t.user_id FROM trips t WHERE t.id = o.trip_id LIMIT 1),
+       o.merchant_id, o.branch_id, $1, 'OPEN', $2, $3
+     FROM offers o WHERE o.id = $4::uuid`,
+    [barcode, grossAmt.toString(), expiresAt, id]
+  );
+
+  // Fire webhook: order.created
+  dispatchWebhook(offer.merchantId, "order.created", {
+    offer_id: id,
+    barcode,
+    merchant_id: offer.merchantId,
+    branch_id: offer.branchId || null,
+    agreed_price: grossAmt,
+    expires_at: expiresAt,
+  }).catch(() => {});
+
   // Update user price_sensitivity in customersDb using cross-DB data from sharedDb
   // First compute the new sensitivity from sharedDb
   const sensitivityRaw = await sharedDb.execute<any>(sql`
@@ -164,7 +190,7 @@ router.post("/:id/accept", async (req, res) => {
   });
 
   const detail = await getOfferWithDetails(id);
-  res.json(detail);
+  res.json({ ...detail, order: { barcode, expiresAt } });
 });
 
 // POST /api/offers/:id/reject — Customer rejects

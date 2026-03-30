@@ -85,7 +85,15 @@ router.post("/:id/accept", async (req, res) => {
   }
 
   const oldStatus = offer.status;
-  const finalPrice = offer.finalPrice || offer.totalPrice;
+
+  // السعر النهائي: آخر سعر اقترحه التاجر في التفاوض (إن وجد) أو السعر الأصلي
+  const lastMerchantNeg = await sharedDb.select()
+    .from(negotiations)
+    .where(and(eq(negotiations.offerId, id), sql`sender_type = 'MERCHANT'`))
+    .orderBy(sql`created_at DESC`)
+    .limit(1);
+
+  const finalPrice = lastMerchantNeg[0]?.proposedPrice || offer.finalPrice || offer.totalPrice;
 
   const [updatedOffer] = await sharedDb.update(offers).set({
     status: "ACCEPTED",

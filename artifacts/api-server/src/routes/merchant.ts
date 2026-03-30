@@ -110,12 +110,30 @@ router.get("/stats", async (req, res) => {
     activeTripsNearby += (dbRows<any>(countRaw)[0]?.cnt ?? 0);
   }
 
+  // Weekly revenue: last 7 days from commission_ledger
+  const weeklyRaw = await sharedDb.execute<any>(sql`
+    SELECT
+      TO_CHAR(created_at AT TIME ZONE 'Asia/Riyadh', 'Dy') AS day_name,
+      TO_CHAR(created_at AT TIME ZONE 'Asia/Riyadh', 'MM-DD') AS day_key,
+      COALESCE(SUM(gross_amount), 0) AS revenue
+    FROM commission_ledger
+    WHERE merchant_id = ${id}::uuid
+      AND created_at >= NOW() - INTERVAL '7 days'
+    GROUP BY day_name, day_key
+    ORDER BY day_key
+  `);
+  const weeklyRevenue = dbRows<any>(weeklyRaw).map(r => ({
+    name: r.day_name,
+    value: parseFloat(r.revenue),
+  }));
+
   res.json({
     totalOffers: stats.total_offers || 0,
     acceptedOffers: stats.accepted_offers || 0,
     pendingOffers: stats.pending_offers || 0,
     totalRevenue: parseFloat(stats.total_revenue || "0"),
     activeTripsNearby,
+    weeklyRevenue,
   });
 });
 

@@ -7,6 +7,7 @@ import { MapPin, Plus, Clock, ChevronLeft } from "lucide-react";
 import { format } from "date-fns";
 import { arSA } from "date-fns/locale";
 import { useProtectedRoute } from "@/hooks/use-auth";
+import { tripStatusAr, tripStatusVariant, tripPurposeAr } from "@/lib/status";
 
 export function UserDashboard() {
   useProtectedRoute();
@@ -49,11 +50,11 @@ export function UserDashboard() {
               <Card className="hover:shadow-2xl hover:border-accent transition-all duration-300 cursor-pointer h-full flex flex-col group">
                 <CardContent className="p-6 flex-1 flex flex-col">
                   <div className="flex justify-between items-start mb-6">
-                    <Badge variant={trip.status === 'ACTIVE' ? 'success' : 'secondary'} className="px-3 py-1 text-sm">
-                      {trip.status === 'ACTIVE' ? 'نشطة' : trip.status === 'COMPLETED' ? 'مكتملة' : 'ملغاة'}
+                    <Badge variant={tripStatusVariant(trip.status)} className="px-3 py-1 text-sm">
+                      {tripStatusAr[trip.status] ?? trip.status}
                     </Badge>
                     <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20">
-                      {trip.tripPurpose}
+                      {tripPurposeAr[trip.tripPurpose ?? ""] ?? trip.tripPurpose}
                     </Badge>
                   </div>
                   

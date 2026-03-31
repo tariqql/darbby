@@ -28,28 +28,30 @@ pnpm install --frozen-lockfile
 echo ""
 echo "⏳ [3/6] بناء تطبيق المسافر (app.darbby.co)..."
 cd $DARBBY_DIR/artifacts/client-app
-VITE_API_BASE_URL=$API_URL pnpm build
-echo "✅ client-app جاهز في: dist/"
+BASE_PATH=/ VITE_API_BASE_URL=$API_URL NODE_ENV=production pnpm build
+echo "✅ client-app جاهز في: dist/public/"
 
 # ─── 4. بناء بوابة التاجر ───────────────────────────────────
 echo ""
 echo "⏳ [4/6] بناء بوابة التاجر (partners.darbby.co)..."
 cd $DARBBY_DIR/artifacts/merchant-portal
-VITE_API_BASE_URL=$API_URL pnpm build
-echo "✅ merchant-portal جاهز في: dist/"
+BASE_PATH=/ VITE_API_BASE_URL=$API_URL NODE_ENV=production pnpm build
+echo "✅ merchant-portal جاهز في: dist/public/"
 
 # ─── 5. بناء لوحة الإدارة ───────────────────────────────────
 echo ""
 echo "⏳ [5/6] بناء لوحة الإدارة (staff.darbby.co)..."
 cd $DARBBY_DIR/artifacts/darbby
-VITE_API_BASE_URL=$API_URL pnpm build
-echo "✅ darbby (admin) جاهز في: dist/"
+BASE_PATH=/ VITE_API_BASE_URL=$API_URL NODE_ENV=production pnpm build
+echo "✅ darbby (admin) جاهز في: dist/public/"
 
 # ─── 6. تشغيل/إعادة تشغيل API مع PM2 ───────────────────────
 echo ""
 echo "⏳ [6/6] تشغيل API Server مع PM2..."
 cd $DARBBY_DIR/artifacts/api-server
 pnpm build
+
+mkdir -p /var/log/darbby
 
 pm2 describe darbby-api > /dev/null 2>&1 && \
   pm2 restart darbby-api || \
